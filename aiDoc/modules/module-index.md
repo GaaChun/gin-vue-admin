@@ -17,11 +17,11 @@
 - `plugins`: 插件化能力，分布在 `server/plugin/` 与 `web/src/plugin/`
 - `deploy`: 运行与发布相关能力，位于 `deploy/`
 
-## 已存在的约束文档
+## 已有模块与约束文档
 
-- `backend-layer-rules.md`: 后端分层、模型、Service、API、Router、初始化入口
-- `plugin-development.md`: 前后端插件结构、插件入口与开发流程
-
+- [warehouse.md](warehouse.md)：进行中的 `warehouse` 插件；说明已落地的基础模型与骨架、后端/前端规划入口、分层和依赖边界，以及尚未实现的能力。
+- `backend-layer-rules.md`：后端分层、模型、Service、API、Router、初始化入口
+- `plugin-development.md`：前后端插件结构、插件入口与开发流程
 ## 命名建议
 
 新增模块文档时，优先使用这类文件名：

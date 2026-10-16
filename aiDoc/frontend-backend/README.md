@@ -16,3 +16,4 @@
 - `boundary.md`
 - `frontend-rules.md`
 - `frontend-utils.md`
+- [warehouse.md](warehouse.md)：进行中的 Warehouse 插件 planned 契约；当前无真实业务端点或 Swagger。
