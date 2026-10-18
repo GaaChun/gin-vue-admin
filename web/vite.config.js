@@ -5,14 +5,14 @@ import { loadEnv } from 'vite'
 import vuePlugin from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import VueFilePathPlugin from './vitePlugin/componentName/index.js'
-import { svgBuilder } from 'vite-auto-import-svg'
+// import { svgBuilder } from 'vite-auto-import-svg'
 import vueRootValidator from 'vite-check-multiple-dom'
-import { AddSecret } from './vitePlugin/secret'
+// import { AddSecret } from './vitePlugin/secret'
 import UnoCSS from '@unocss/vite'
 
 // @see https://cn.vitejs.dev/config/
 export default ({ mode }) => {
-  AddSecret('')
+  // AddSecret('')
   const env = loadEnv(mode, process.cwd())
   viteLogo(env)
 
@@ -81,7 +81,7 @@ export default ({ mode }) => {
       env.VITE_POSITION === 'open' &&
       vueDevTools({ launchEditor: env.VITE_EDITOR }),
       vuePlugin(),
-      svgBuilder(['./src/plugin/', './src/assets/icons/'], base, outDir, 'assets', mode),
+      // svgBuilder(['./src/plugin/', './src/assets/icons/'], base, outDir, 'assets', mode),
       [Banner(`\n Build based on gin-vue-admin \n Time : ${timestamp}`)],
       VueFilePathPlugin('./src/pathInfo.json'),
       UnoCSS(),
