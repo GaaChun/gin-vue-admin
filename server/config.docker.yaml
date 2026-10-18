@@ -2,10 +2,10 @@
 
 # jwt configuration
 jwt:
-    signing-key: qmPlus
+    signing-key: BEzaRZvkmNxe8AkEVf9r
     expires-time: 7d
     buffer-time: 1d
-    issuer: qmPlus
+    issuer: ShenHai
 # zap logger configuration
 zap:
     level: info
@@ -23,9 +23,9 @@ redis:
     #是否使用redis集群模式
     useCluster: false
     #使用集群模式addr和db默认无效
-    addr: 177.7.0.14:6379
-    password: ""
-    db: 0
+    addr: 10.0.0.175:26370
+    password: "7HqM8wGj1EoH"
+    db: 9
     clusterAddrs:
         - "177.7.0.14:7000"
         - "177.7.0.15:7001"
@@ -72,7 +72,7 @@ email:
 
 # system configuration
 system:
-    env: local # 修改为public可以关闭路由日志输出
+    env: public # 修改为public可以关闭路由日志输出
     addr: 8888
     db-type: mysql
     oss-type: local # 控制oss选择走本地还是 七牛等其他仓 自行增加其他oss仓可以在 server/utils/upload/upload.go 中 NewOss函数配置
@@ -99,15 +99,15 @@ captcha:
 # mysql connect configuration
 # 未初始化之前请勿手动修改数据库信息！！！如果一定要手动初始化请看（https://gin-vue-admin.com/docs/first_master）
 mysql:
-    path: ""
-    port: ""
-    config: ""
-    db-name: ""
-    username: ""
-    password: ""
+    path: "10.0.0.175"
+    port: "13306"
+    config: "charset=utf8mb4&parseTime=True&loc=Local"
+    db-name: "gva"
+    username: "gva"
+    password: "nYdABZDBt8By63xR"
     max-idle-conns: 10
     max-open-conns: 100
-    log-mode: ""
+    log-mode: "error"
     log-zap: false
 
 # pgsql connect configuration

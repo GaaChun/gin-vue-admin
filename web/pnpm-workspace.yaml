@@ -1,0 +1,10 @@
+allowBuilds:
+  '@vue-office/docx': true
+  '@vue-office/excel': true
+  '@vue-office/pdf': true
+  '@parcel/watcher': true
+  core-js: true
+  yorkie: true
+  core-js-pure: true
+  es5-ext: true
+  vue-demi: true

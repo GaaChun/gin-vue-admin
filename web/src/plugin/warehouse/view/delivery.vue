@@ -24,6 +24,7 @@
         <el-table-column prop="number" label="单号" min-width="160" />
         <el-table-column label="送货日期" min-width="130"><template #default="{ row }">{{ displayDate(row.deliveredAt) }}</template></el-table-column>
         <el-table-column prop="brandNameSnapshot" label="客户" min-width="130" />
+        <el-table-column prop="department" label="部门" min-width="120" />
         <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="row.status === 'reviewed' ? 'success' : 'info'">{{ row.status === 'reviewed' ? '已审核' : '未审核' }}</el-tag></template></el-table-column>
         <el-table-column prop="totalAmount" label="金额" min-width="130" align="right" />
         <el-table-column prop="createdByNameSnapshot" label="创建人" min-width="110" />
@@ -57,14 +58,29 @@
           </el-form-item>
           <el-form-item label="部门"><el-autocomplete v-model="form.department" :fetch-suggestions="suggestDepartments" maxlength="100" placeholder="请输入部门" /></el-form-item>
           <el-form-item label="送货日期" required><el-date-picker v-model="form.deliveredAt" type="date" value-format="YYYY-MM-DD" placeholder="选择送货日期" /></el-form-item>
+          <el-form-item v-if="idOf(note)" label="创建人"><el-input :model-value="note.createdByNameSnapshot || '—'" readonly /></el-form-item>
+          <el-form-item v-if="idOf(note)" label="创建时间"><el-input :model-value="displayTime(note.createdAt ?? note.CreatedAt)" readonly /></el-form-item>
+          <el-form-item v-if="idOf(note)" label="修改人"><el-input :model-value="userNickname(note.updatedBy)" readonly /></el-form-item>
+          <el-form-item v-if="idOf(note)" label="修改时间"><el-input :model-value="displayTime(note.updatedAt ?? note.UpdatedAt)" readonly /></el-form-item>
+          <el-form-item v-if="idOf(note)" label="审核人"><el-input :model-value="note.reviewedByNameSnapshot || '—'" readonly /></el-form-item>
+          <el-form-item v-if="idOf(note)" label="审核时间"><el-input :model-value="displayTime(note.reviewedAt)" readonly /></el-form-item>
         </el-form>
         <div v-if="!readonly" class="editor-tools">
           <el-tree-select v-model="lineCategoryId" :data="categoryTree" check-strictly clearable filterable placeholder="录入候选类别（含子类别）" :props="{ value: 'id', label: 'label', children: 'children' }" />
           <el-button :disabled="!canEdit" @click="addBlankRow">新增空行</el-button>
           <el-button type="primary" :disabled="!canEdit || !optionsReady" @click="pickerOpen = true">批量选择物料</el-button>
+          <el-autocomplete
+            v-model="quickMaterialSearch"
+            :fetch-suggestions="suggestQuickMaterials"
+            :disabled="!canEdit || !optionsReady"
+            class="quick-material-search"
+            placeholder="快捷添加：编号 / 名称 / 助记符"
+            @select="quickAddMaterial"
+          />
+          <el-button :disabled="!canEdit || !optionsReady" @click="openQuickMaterialCreate">新建物料并添加</el-button>
           <span class="editor-hint">数量最多4位小数且大于0，单价最多4位小数且不小于0；Enter / Tab 前进，Shift+Tab 返回。</span>
         </div>
-        <el-table :data="rows" row-key="rowKey" border class="detail-table">
+        <el-table :data="rows" row-key="rowKey" border class="detail-table" show-summary :summary-method="tableSummary">
           <el-table-column type="index" label="行" width="50" />
           <el-table-column label="物料编号 / 选择" min-width="240"><template #default="{ row }">
             <span v-if="readonly">{{ row.materialCode }}</span>
@@ -93,16 +109,16 @@
             <el-input v-else :ref="(element) => setCellRef(row, 'unitPrice', element)" v-model="row.unitPrice" :disabled="!canEdit" inputmode="decimal" @input="clearFieldError(row, 'unitPrice')" @compositionstart="row.composing = true" @compositionend="row.composing = false" @keydown="cellKeydown($event, row, 'unitPrice')" />
             <div v-if="row.errors.unitPrice" class="cell-error">{{ row.errors.unitPrice }}</div>
           </template></el-table-column>
-          <el-table-column label="已保存金额" min-width="130" align="right"><template #default="{ row }">{{ row.amount ?? '保存后计算' }}</template></el-table-column>
+          <el-table-column prop="amount" label="金额" min-width="130" align="right"><template #default="{ row }">{{ row.amount ?? '保存后计算' }}</template></el-table-column>
           <el-table-column v-if="!readonly" label="操作" width="80" fixed="right"><template #default="{ row }"><el-button link type="danger" :disabled="!canEdit" @click="removeRow(row)">移除</el-button></template></el-table-column>
         </el-table>
         <p class="editor-hint">金额以服务端保存计算为准，不使用浮点数预估。完全空白的尾行不会提交，部分填写的行必须补齐。</p>
-        <p v-if="idOf(note)">已保存金额：{{ note.totalAmount }}；版本：{{ note.version }}；创建人：{{ note.createdByNameSnapshot }}；审核人：{{ note.reviewedByNameSnapshot || '—' }}</p>
+        
       </div>
       
       <div class="delivery-detail-footer">
         <el-button :disabled="saving || actionLoading || rowsLoading || reserving" @click="closeEditor">关闭</el-button>
-        <el-button v-if="!readonly" type="primary" :loading="saving" :disabled="!canEdit || (!idOf(note) && !reservation.token)" @click="save">保存</el-button>
+        <el-button v-if="!readonly" type="primary" :loading="saving" :disabled="!canEdit || (!idOf(note) && !reservation.token)" @click="save()">保存</el-button>
         <el-button v-if="!readonly" :loading="saving" :disabled="!canEdit || (!idOf(note) && !reservation.token)" @click="save(true)">保存并继续新增</el-button>
         <el-button v-if="idOf(note) && !readonly" type="success" :loading="actionLoading" :disabled="dirty || !canEdit" @click="transition(note, 'review')">审核</el-button>
         <el-button v-if="idOf(note) && readonly" type="warning" :loading="actionLoading" @click="transition(note, 'unreview')">反审核</el-button>
@@ -110,15 +126,33 @@
       </div>
     </div>
     <DeliveryMaterialPicker v-model="pickerOpen" :materials="materials" :categories="categoryTree" :loading="rowsLoading" @confirm="appendMaterials" />
+    <el-dialog v-model="quickMaterialDialogOpen" title="新建物料并添加到送货单" width="480px" :close-on-click-modal="false">
+      <el-form label-width="90px" @submit.prevent="createQuickMaterial">
+        <el-form-item label="物料名称" required><el-input v-model="quickMaterialForm.name" maxlength="200" /></el-form-item>
+        <el-form-item label="物料编号" required><el-input v-model="quickMaterialForm.code" maxlength="64" /></el-form-item>
+        <el-form-item label="助记符" required><el-input v-model="quickMaterialForm.mnemonic" maxlength="100" /></el-form-item>
+        <el-form-item label="基本单位" required>
+          <el-select v-model="quickMaterialForm.unitId" filterable placeholder="选择基本单位" class="full-width">
+            <el-option v-for="unit in units" :key="idOf(unit)" :value="idOf(unit)" :label="unit.name" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button :disabled="quickMaterialSaving" @click="quickMaterialDialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="quickMaterialSaving" @click="createQuickMaterial">创建并添加</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import DeliveryMaterialPicker from '../components/delivery-material-picker.vue'
+import { getUserList } from '@/api/user'
 import { allOptions, idOf, request, showError } from '../api/common'
+import { saveMaster } from '../api/master'
 
 defineOptions({ name: 'WarehouseDelivery' })
 const base = '/warehouse/delivery'
@@ -137,6 +171,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const filters = reactive({ number: '', dates: [], brandId: undefined, status: '', department: '' })
+const usersById = ref(new Map())
 const listTable = ref()
 const selectedNotes = ref([])
 const batchLoading = ref('')
@@ -181,6 +216,10 @@ const note = ref({})
 const customerSearch = ref('')
 const form = reactive({ brandId: undefined, department: '', deliveredAt: '' })
 const departments = ref([])
+const quickMaterialSearch = ref('')
+const quickMaterialDialogOpen = ref(false)
+const quickMaterialSaving = ref(false)
+const quickMaterialForm = reactive({ name: '', code: '', mnemonic: '', unitId: undefined })
 const rows = ref([])
 const lineCategoryId = ref()
 const pickerOpen = ref(false)
@@ -198,6 +237,19 @@ const filteredBrands = computed(() => {
   return brands.value.filter((brand) => [brand.name, brand.mnemonic, brand.code]
     .some((value) => String(value || '').toLocaleLowerCase().includes(keyword)))
 })
+function userNickname(id) {
+  return usersById.value.get(Number(id)) || '—'
+}
+async function loadUsers() {
+  try {
+    const response = await getUserList({ page: 1, pageSize: 999 })
+    if (response?.code === 0) {
+      usersById.value = new Map((response.data?.list || []).map((user) => [Number(idOf(user)), user.nickName || '—']))
+    }
+  } catch (error) {
+    showError(error)
+  }
+}
 async function loadDepartments() {
   try {
     const result = await request({ url: `${base}/departments`, method: 'get' })
@@ -211,6 +263,54 @@ function suggestDepartments(queryString, callback) {
   callback(departments.value
     .filter((department) => !keyword || department.toLocaleLowerCase().includes(keyword))
     .map((value) => ({ value })))
+}
+function suggestQuickMaterials(queryString, callback) {
+  const keyword = queryString.trim().toLocaleLowerCase()
+  callback(materials.value
+    .filter((item) => [item.code, item.name, item.mnemonic].some((value) => String(value || '').toLocaleLowerCase().includes(keyword)))
+    .slice(0, 20)
+    .map((item) => ({ ...item, value: `${item.code} ${item.name}` })))
+}
+async function quickAddMaterial(item) {
+  quickMaterialSearch.value = ''
+  await appendMaterials([item])
+}
+function openQuickMaterialCreate() {
+  Object.assign(quickMaterialForm, { name: quickMaterialSearch.value.trim(), code: '', mnemonic: '', unitId: undefined })
+  quickMaterialDialogOpen.value = true
+}
+async function createQuickMaterial() {
+  if (quickMaterialSaving.value || !canEdit.value) return
+  const payload = {
+    name: quickMaterialForm.name.trim(),
+    code: quickMaterialForm.code.trim(),
+    mnemonic: quickMaterialForm.mnemonic.trim(),
+    units: [{ unitId: Number(quickMaterialForm.unitId), factor: '1', isBase: true, enabled: true }]
+  }
+  if (!payload.name || !payload.code || !payload.mnemonic || !payload.units[0].unitId) {
+    ElMessage.error('请填写物料名称、编号、助记符并选择基本单位')
+    return
+  }
+  quickMaterialSaving.value = true
+  try {
+    const created = await saveMaster('materials', payload)
+    const bindings = (created.units || []).filter((binding) => binding.enabled)
+    const baseBinding = bindings.find((binding) => binding.isBase)
+    if (!idOf(created) || !baseBinding) throw new Error('物料已创建，但服务端未返回有效的基本单位')
+    const loaded = { material: created, bindings, baseBinding }
+    materials.value = [created, ...materials.value.filter((item) => idOf(item) !== idOf(created))]
+    rowsLoading.value = true
+    const firstAppended = appendLoadedMaterials([loaded])
+    quickMaterialDialogOpen.value = false
+    quickMaterialSearch.value = ''
+    ElMessage.success('物料创建并添加成功')
+    if (firstAppended) await focusCell(firstAppended, 'unit')
+  } catch (error) {
+    showError(error)
+  } finally {
+    rowsLoading.value = false
+    quickMaterialSaving.value = false
+  }
 }
 const detailRoute = computed(() => route.query.whDelivery === '1' && (route.query.whId || route.query.whNew === '1'))
 function listRouteQuery() {
@@ -248,6 +348,13 @@ const lineCategoryIds = computed(() => {
   }
   return ids
 })
+function tableSummary({ columns }) {
+  return columns.map((column, index) => {
+    if (index === 0) return '合计'
+    if (column.property === 'amount') return note.value.totalAmount || '保存后计算'
+    return ''
+  })
+}
 
 function shanghaiInput(value) {
   if (!value) return ''
@@ -309,9 +416,27 @@ function resetEditor() {
 }
 function openNew() { return enterDetail(null) }
 async function initializeNew() {
-  resetEditor(); rows.value = [emptyRow()]; editorOpen.value = true; savedSignature.value = signature()
-  await reserveNumber()
+  resetEditor()
+  const draft = readCreateDraft()
+  if (draft) {
+    Object.assign(form, draft.form)
+    Object.assign(reservation, draft.reservation || {})
+    rows.value = draft.rows?.length ? draft.rows : [emptyRow()]
+  } else {
+    rows.value = [emptyRow()]
+  }
+  editorOpen.value = true
+  savedSignature.value = signature()
+  if (!reservation.token) await reserveNumber()
 }
+function readCreateDraft() {
+  try { return JSON.parse(sessionStorage.getItem('warehouse.delivery.createDraft') || 'null') } catch { return null }
+}
+function persistCreateDraft() {
+  if (idOf(note.value) || !editorOpen.value) return
+  sessionStorage.setItem('warehouse.delivery.createDraft', JSON.stringify({ form: { ...form }, reservation: { ...reservation }, rows: rows.value }))
+}
+function clearCreateDraft() { sessionStorage.removeItem('warehouse.delivery.createDraft') }
 async function reserveNumber() {
   if (reserving.value || reservation.token || idOf(note.value)) return
   reserving.value = true; reservationError.value = ''
@@ -427,12 +552,16 @@ async function appendMaterials(selected) {
   let firstAppended
   try {
     const loaded = await Promise.all(selected.map((item) => currentMaterial(idOf(item))))
-    const appended = loaded.map((data) => { const row = emptyRow(); applyMaterial(row, data); return row })
-    while (rows.value.length && isEmptyRow(rows.value.at(-1))) rows.value.pop()
-    rows.value.push(...appended); pickerOpen.value = false
-    firstAppended = appended[0]
+    firstAppended = appendLoadedMaterials(loaded)
   } catch (error) { showError(error) } finally { rowsLoading.value = false }
   if (firstAppended) await focusCell(firstAppended, 'unit')
+}
+function appendLoadedMaterials(loaded) {
+  const appended = loaded.map((data) => { const row = emptyRow(); applyMaterial(row, data); return row })
+  while (rows.value.length && isEmptyRow(rows.value.at(-1))) rows.value.pop()
+  rows.value.push(...appended)
+  pickerOpen.value = false
+  return appended[0]
 }
 function clearFieldError(row, field) { delete row.errors[field]; row.amount = undefined }
 function validateDecimal(row, field) {
@@ -509,13 +638,20 @@ async function save(continueNew = false) {
   const data = { ...(id ? { id, version: note.value.version } : { reservationToken: reservation.token }), brandId: form.brandId, department: form.department.trim(), deliveredAt: `${form.deliveredAt}T00:00:00+08:00`, details }
   saving.value = true
   try {
-    const result = await request({ url: `${base}/${id ? 'update' : 'create'}`, method: id ? 'put' : 'post', data })
+    await request({ url: `${base}/${id ? 'update' : 'create'}`, method: id ? 'put' : 'post', data })
+    clearCreateDraft()
     if (continueNew) {
       const query = { ...route.query, whDelivery: '1', whNew: '1' }
       delete query.whId
-      await router.push({ name: route.name, query })
+      if (route.query.whNew === '1' && !route.query.whId) {
+        await initializeNew()
+      } else {
+        editorOpen.value = false
+        await router.push({ name: route.name, query })
+      }
     } else {
-      await readAggregate(result)
+      editorOpen.value = false
+      await router.push({ name: route.name, query: listRouteQuery() })
     }
     ElMessage.success(continueNew ? '保存成功，可继续新增送货单' : '送货单保存成功')
     await loadList()
@@ -547,7 +683,9 @@ async function transition(row, action) {
   } catch (error) { if (active) reportEditorError(error); else showError(error); await loadList() }
   finally { actionLoading.value = false }
 }
-onMounted(() => { loadList(); loadOptions(); loadDepartments() })
+watch([form, rows, reservation], persistCreateDraft, { deep: true })
+onBeforeUnmount(persistCreateDraft)
+onMounted(() => { loadList(); loadOptions(); loadDepartments(); loadUsers() })
 watch(() => [route.query.whDelivery, route.query.whId, route.query.whNew], async ([detail, id, isNew]) => {
   if (detail !== '1' || (!id && isNew !== '1')) {
     editorOpen.value = false
