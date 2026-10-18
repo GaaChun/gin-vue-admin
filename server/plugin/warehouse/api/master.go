@@ -147,12 +147,12 @@ func (a MasterAPI) UnitDetail(c *gin.Context) {
 	response.OkWithDetailed(v, "操作成功", c)
 }
 
-// CreateBrand 创建品牌
-// @Summary 创建品牌
+// CreateBrand 创建客户
+// @Summary 创建客户
 // @Tags warehouse-master
 // @Accept json
 // @Produce json
-// @Param body body request.CreateBrandInput true "品牌"
+// @Param body body request.CreateBrandInput true "客户"
 // @Success 200 {object} response.Response
 // @Security ApiKeyAuth
 // @Router /warehouse/master/brands/create [post]
@@ -169,12 +169,12 @@ func (a MasterAPI) CreateBrand(c *gin.Context) {
 	response.OkWithDetailed(v, "操作成功", c)
 }
 
-// UpdateBrand 更新品牌
-// @Summary 更新品牌
+// UpdateBrand 更新客户
+// @Summary 更新客户
 // @Tags warehouse-master
 // @Accept json
 // @Produce json
-// @Param body body request.UpdateBrandInput true "品牌"
+// @Param body body request.UpdateBrandInput true "客户"
 // @Success 200 {object} response.Response
 // @Security ApiKeyAuth
 // @Router /warehouse/master/brands/update [put]
@@ -191,8 +191,8 @@ func (a MasterAPI) UpdateBrand(c *gin.Context) {
 	response.OkWithDetailed(v, "操作成功", c)
 }
 
-// DeleteBrand 删除品牌
-// @Summary 软删除品牌
+// DeleteBrand 删除客户
+// @Summary 软删除客户
 // @Tags warehouse-master
 // @Accept json
 // @Produce json
@@ -212,8 +212,8 @@ func (a MasterAPI) DeleteBrand(c *gin.Context) {
 	response.Ok(c)
 }
 
-// ListBrands 查询品牌列表
-// @Summary 查询品牌列表
+// ListBrands 查询客户列表
+// @Summary 查询客户列表
 // @Tags warehouse-master
 // @Produce json
 // @Param query query request.BrandListQuery false "筛选"
@@ -234,8 +234,8 @@ func (a MasterAPI) ListBrands(c *gin.Context) {
 	response.OkWithDetailed(v, "操作成功", c)
 }
 
-// BrandDetail 查询品牌详情
-// @Summary 查询品牌详情
+// BrandDetail 查询客户详情
+// @Summary 查询客户详情
 // @Tags warehouse-master
 // @Produce json
 // @Param id query integer true "ID"

@@ -181,4 +181,20 @@ func (a DeliveryAPI) List(c *gin.Context) {
 	response.OkWithDetailed(v, "操作成功", c)
 }
 
+// Departments lists historical department values for free-text suggestions.
+// @Summary 查询历史部门候选
+// @Tags warehouse-delivery
+// @Produce json
+// @Success 200 {object} response.Response
+// @Security ApiKeyAuth
+// @Router /warehouse/delivery/departments [get]
+func (a DeliveryAPI) Departments(c *gin.Context) {
+	v, err := a.service.Departments(c)
+	if err != nil {
+		a.fail(c, err)
+		return
+	}
+	response.OkWithDetailed(v, "操作成功", c)
+}
+
 func (a DeliveryAPI) fail(c *gin.Context, err error) { MasterAPI{}.fail(c, err) }

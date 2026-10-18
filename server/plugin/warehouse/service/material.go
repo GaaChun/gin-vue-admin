@@ -213,9 +213,6 @@ func prepareMaterialInput(in req.MaterialInput) (model.Material, []materialUnitC
 	if err != nil {
 		return model.Material{}, nil, err
 	}
-	if in.BrandID == 0 || in.CategoryID == 0 {
-		return model.Material{}, nil, domainError(ValidationFailed, "必须选择有效品牌和类别", "brandId")
-	}
 	if in.Specification != nil && utf8RuneCount(*in.Specification) > 255 {
 		return model.Material{}, nil, domainError(ValidationFailed, "长度超出限制", "specification")
 	}
@@ -271,19 +268,23 @@ func (s *MasterService) lockAndValidateMaterialReferences(tx *gorm.DB, brandID, 
 		unitIDs = append(unitIDs, unit.unitID)
 	}
 	sort.Slice(unitIDs, func(i, j int) bool { return unitIDs[i] < unitIDs[j] })
-	var brands []model.Brand
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", brandID).Order("id").Find(&brands).Error; err != nil {
-		return err
+	if brandID != 0 {
+		var brands []model.Brand
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", brandID).Order("id").Find(&brands).Error; err != nil {
+			return err
+		}
+		if len(brands) != 1 {
+			return domainError(ValidationFailed, "客户不存在或已删除", "brandId")
+		}
 	}
-	if len(brands) != 1 {
-		return domainError(ValidationFailed, "品牌不存在或已删除", "brandId")
-	}
-	var categories []model.Category
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", categoryID).Order("id").Find(&categories).Error; err != nil {
-		return err
-	}
-	if len(categories) != 1 {
-		return domainError(ValidationFailed, "类别不存在或已删除", "categoryId")
+	if categoryID != 0 {
+		var categories []model.Category
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", categoryID).Order("id").Find(&categories).Error; err != nil {
+			return err
+		}
+		if len(categories) != 1 {
+			return domainError(ValidationFailed, "类别不存在或已删除", "categoryId")
+		}
 	}
 	var activeUnits []model.Unit
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id IN ?", unitIDs).Order("id").Find(&activeUnits).Error; err != nil {

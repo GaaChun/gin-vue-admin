@@ -151,9 +151,9 @@ func (s *MasterExcelState) applyBrands(rows []brandExcelRow, actor uint) error {
 		if err != nil {
 			return located(err, brandSheetName, row.row, "编号")
 		}
-		name, err := requiredLimited(row.name, "品牌名称", 100)
+		name, err := requiredLimited(row.name, "客户名称", 100)
 		if err != nil {
-			return located(err, brandSheetName, row.row, "品牌名称")
+			return located(err, brandSheetName, row.row, "客户名称")
 		}
 		mnemonic, err := requiredLimited(row.mnemonic, "助记符", 100)
 		if err != nil {
@@ -169,7 +169,7 @@ func (s *MasterExcelState) applyBrands(rows []brandExcelRow, actor uint) error {
 				return located(err, brandSheetName, row.row, "版本号")
 			}
 			if _, duplicateName := s.brandByName(name); duplicateName && !strings.EqualFold(strings.TrimSpace(current.Name), name) {
-				return located(duplicate("品牌名称"), brandSheetName, row.row, "品牌名称")
+				return located(duplicate("客户名称"), brandSheetName, row.row, "客户名称")
 			}
 			current.Name, current.Mnemonic = name, mnemonic
 			ApplyUpdateAudit(&current.BusinessModel, actor)
@@ -181,7 +181,7 @@ func (s *MasterExcelState) applyBrands(rows []brandExcelRow, actor uint) error {
 			return located(domainError(ValidationFailed, "新增记录不能指定版本号", "版本号"), brandSheetName, row.row, "版本号")
 		}
 		if _, exists := s.brandByName(name); exists {
-			return located(duplicate("品牌名称"), brandSheetName, row.row, "品牌名称")
+			return located(duplicate("客户名称"), brandSheetName, row.row, "客户名称")
 		}
 		s.AddBrand(code, name, mnemonic, actor)
 		s.created++
@@ -311,20 +311,27 @@ func (s *MasterExcelState) prepareMaterialExcel(row materialExcelRow) (model.Mat
 	if err != nil {
 		return model.Material{}, located(err, materialSheetName, row.row, "编号")
 	}
-	brand, found := s.brandByCode(row.brandCode)
-	if !found {
-		return model.Material{}, located(domainError(ValidationFailed, "品牌不存在", "品牌编号"), materialSheetName, row.row, "品牌编号")
+	var brandID, categoryID uint
+	if row.brandCode != "" {
+		brand, found := s.brandByCode(row.brandCode)
+		if !found {
+			return model.Material{}, located(domainError(ValidationFailed, "客户不存在", "brandId"), materialSheetName, row.row, "客户编号")
+		}
+		brandID = brand.ID
 	}
-	category, found := s.categoryByCode(row.categoryCode)
-	if !found {
-		return model.Material{}, located(domainError(ValidationFailed, "类别不存在", "类别编号"), materialSheetName, row.row, "类别编号")
+	if row.categoryCode != "" {
+		category, found := s.categoryByCode(row.categoryCode)
+		if !found {
+			return model.Material{}, located(domainError(ValidationFailed, "类别不存在", "categoryId"), materialSheetName, row.row, "类别编号")
+		}
+		categoryID = category.ID
 	}
 	if row.imageFileID != nil {
 		if _, ok := s.images[*row.imageFileID]; !ok {
 			return model.Material{}, located(domainError(ValidationFailed, "图片未通过物料图片校验", "图片文件ID"), materialSheetName, row.row, "图片文件ID")
 		}
 	}
-	item := model.Material{Name: name, Mnemonic: mnemonic, Code: code, BrandID: brand.ID, CategoryID: category.ID, ImageFileID: row.imageFileID}
+	item := model.Material{Name: name, Mnemonic: mnemonic, Code: code, BrandID: brandID, CategoryID: categoryID, ImageFileID: row.imageFileID}
 	if row.specification != "" {
 		item.Specification = stringPointer(row.specification)
 	}
@@ -590,7 +597,7 @@ func writeMasterWorkbook(kind string, rows, secondary [][]string) ([]byte, error
 	case "units":
 		err = writeSheet(book, unitSheetName, []excelColumn{{"单位名称", true}, {"版本号", false}}, rows)
 	case "brands":
-		err = writeSheet(book, brandSheetName, []excelColumn{{"编号", true}, {"品牌名称", true}, {"助记符", true}, {"版本号", false}}, rows)
+		err = writeSheet(book, brandSheetName, []excelColumn{{"编号", true}, {"客户名称", true}, {"助记符", true}, {"版本号", false}}, rows)
 	case "categories":
 		err = writeSheet(book, categorySheetName, []excelColumn{{"编号", true}, {"类别名称", true}, {"助记符", true}, {"上级类别编号", true}, {"版本号", false}}, rows)
 	case "materials":

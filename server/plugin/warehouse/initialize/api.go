@@ -19,6 +19,7 @@ func Api(_ context.Context) {
 		api("POST", "/warehouse/delivery/review", "审核送货单"),
 		api("POST", "/warehouse/delivery/unreview", "反审核送货单"),
 		api("GET", "/warehouse/delivery/list", "查询送货单"),
+		api("GET", "/warehouse/delivery/departments", "查询历史部门候选"),
 		api("GET", "/warehouse/delivery/detail", "查询送货单详情"),
 		api("GET", "/warehouse/reconciliation/columns", "查询对账列字典"),
 		api("GET", "/warehouse/reconciliation/options", "查询历史快照筛选选项"),
@@ -33,7 +34,7 @@ func Api(_ context.Context) {
 		api("POST", "/warehouse/schemes/publish", "管理共享报表方案"),
 	}
 	for _, resource := range []struct{ path, label string }{
-		{"units", "单位"}, {"brands", "品牌"}, {"categories", "类别"}, {"materials", "物料"},
+		{"units", "单位"}, {"brands", "客户"}, {"categories", "类别"}, {"materials", "物料"},
 	} {
 		prefix := "/warehouse/master/" + resource.path
 		entities = append(entities,

@@ -39,7 +39,7 @@ func (s *MasterService) ImportMasterExcel(ctx context.Context, actor uint, kind 
 
 const (
 	unitSheetName         = "单位"
-	brandSheetName        = "品牌"
+	brandSheetName        = "客户"
 	categorySheetName     = "类别"
 	materialSheetName     = "物料"
 	materialUnitSheetName = "物料单位"
@@ -124,7 +124,7 @@ func masterTemplate(kind string) ([]byte, error) {
 			return nil, err
 		}
 	case "brands":
-		if err := writeSheet(book, brandSheetName, []excelColumn{{"编号", true}, {"品牌名称", true}, {"助记符", true}, {"版本号", false}}, [][]string{{"B001", "品牌", "pp", ""}}); err != nil {
+		if err := writeSheet(book, brandSheetName, []excelColumn{{"编号", true}, {"客户名称", true}, {"助记符", true}, {"版本号", false}}, [][]string{{"B001", "客户", "kh", ""}}); err != nil {
 			return nil, err
 		}
 	case "categories":
@@ -144,11 +144,12 @@ func masterTemplate(kind string) ([]byte, error) {
 	if book.GetSheetName(0) == "Sheet1" {
 		_ = book.DeleteSheet("Sheet1")
 	}
+	book.SetActiveSheet(0)
 	return workbookBytes(book)
 }
 
 func materialColumns() []excelColumn {
-	return []excelColumn{{"编号", true}, {"物料名称", true}, {"助记符", true}, {"规格", false}, {"别名", false}, {"品牌编号", true}, {"类别编号", true}, {"图片文件ID", false}, {"版本号", false}}
+	return []excelColumn{{"编号", true}, {"物料名称", true}, {"助记符", true}, {"规格", false}, {"别名", false}, {"客户编号", false}, {"类别编号", false}, {"图片文件ID", false}, {"版本号", false}}
 }
 
 func materialUnitColumns() []excelColumn {
@@ -233,14 +234,14 @@ func readUnitSheet(book *excelize.File) ([]unitExcelRow, []excelCellError) {
 }
 
 func readBrandSheet(book *excelize.File) ([]brandExcelRow, []excelCellError) {
-	rows, problems := readRows(book, brandSheetName, []excelColumn{{"编号", true}, {"品牌名称", true}, {"助记符", true}, {"版本号", false}})
+	rows, problems := readRows(book, brandSheetName, []excelColumn{{"编号", true}, {"客户名称", true}, {"助记符", true}, {"版本号", false}})
 	result := make([]brandExcelRow, 0, len(rows))
 	for _, row := range rows {
 		version, versionProblem := optionalVersion(brandSheetName, row.number, "版本号", row.values["版本号"])
 		if versionProblem != nil {
 			problems = append(problems, *versionProblem)
 		}
-		result = append(result, brandExcelRow{row: row.number, code: strings.TrimSpace(row.values["编号"]), name: strings.TrimSpace(row.values["品牌名称"]), mnemonic: strings.TrimSpace(row.values["助记符"]), version: version})
+		result = append(result, brandExcelRow{row: row.number, code: strings.TrimSpace(row.values["编号"]), name: strings.TrimSpace(row.values["客户名称"]), mnemonic: strings.TrimSpace(row.values["助记符"]), version: version})
 	}
 	return result, problems
 }
@@ -287,7 +288,7 @@ func readMaterialSheets(book *excelize.File) ([]materialExcelRow, []materialUnit
 		if imageProblem != nil {
 			problems = append(problems, *imageProblem)
 		}
-		materials = append(materials, materialExcelRow{row: row.number, code: code, name: strings.TrimSpace(row.values["物料名称"]), mnemonic: strings.TrimSpace(row.values["助记符"]), specification: strings.TrimSpace(row.values["规格"]), alias: strings.TrimSpace(row.values["别名"]), brandCode: strings.TrimSpace(row.values["品牌编号"]), categoryCode: strings.TrimSpace(row.values["类别编号"]), imageFileID: imageID, version: version})
+		materials = append(materials, materialExcelRow{row: row.number, code: code, name: strings.TrimSpace(row.values["物料名称"]), mnemonic: strings.TrimSpace(row.values["助记符"]), specification: strings.TrimSpace(row.values["规格"]), alias: strings.TrimSpace(row.values["别名"]), brandCode: strings.TrimSpace(row.values["客户编号"]), categoryCode: strings.TrimSpace(row.values["类别编号"]), imageFileID: imageID, version: version})
 	}
 	unitRows, unitProblems := readRows(book, materialUnitSheetName, materialUnitColumns())
 	problems = append(problems, unitProblems...)

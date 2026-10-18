@@ -41,9 +41,9 @@ type QuantityBucket struct {
 }
 
 type ReportSummary struct {
-	Amount              *string          `json:"amount,omitempty"`
-	QuantityBuckets     []QuantityBucket `json:"quantityBuckets,omitempty"`
-	BaseQuantityBuckets []QuantityBucket `json:"baseQuantityBuckets,omitempty"`
+	Amount       *string `json:"amount,omitempty"`
+	Quantity     *string `json:"quantity,omitempty"`
+	BaseQuantity *string `json:"baseQuantity,omitempty"`
 }
 
 type ReportProjection struct {
@@ -63,6 +63,7 @@ type ReconciliationLine struct {
 	Status                                    DeliveryStatus
 	NoteNumber                                string
 	BrandID                                   uint
+	Department                                string
 	BrandCode, BrandName                      string
 	MaterialID                                uint
 	MaterialCode, MaterialName                string
@@ -84,12 +85,13 @@ func ReconciliationColumns() []ReportColumn {
 		{ID: "deliveryDay", Label: "送货日", Kind: ColumnDimension, DataType: "date"},
 		{ID: "deliveryMonth", Label: "送货月", Kind: ColumnDimension, DataType: "month"},
 		{ID: "noteNumber", Label: "单号", Kind: ColumnDimension, DataType: "text"},
-		{ID: "brand", Label: "品牌", Kind: ColumnDimension, DataType: "text"},
+		{ID: "brand", Label: "客户", Kind: ColumnDimension, DataType: "text"},
 		{ID: "materialCode", Label: "物料编号", Kind: ColumnDimension, DataType: "text"},
 		{ID: "materialName", Label: "物料名称", Kind: ColumnDimension, DataType: "text"},
 		{ID: "specification", Label: "规格", Kind: ColumnDimension, DataType: "text"},
 		{ID: "category", Label: "类别", Kind: ColumnDimension, DataType: "text"},
 		{ID: "unit", Label: "单位", Kind: ColumnDimension, DataType: "text"},
+		{ID: "department", Label: "部门", Kind: ColumnDimension, DataType: "text"},
 		{ID: "creator", Label: "制单人", Kind: ColumnDimension, DataType: "text"},
 		{ID: "createdAt", Label: "制单时间", Kind: ColumnDimension, DataType: "datetime"},
 		{ID: "reviewer", Label: "审核人", Kind: ColumnDimension, DataType: "text"},
@@ -125,7 +127,7 @@ func BuildProjection(lines []ReconciliationLine, query req.ReconciliationQuery, 
 		rows = append(rows, groups[key].row(columns))
 	}
 	page := query.PageQuery.WithDefaults()
-	result := ReportProjection{List: rows, Page: page.Page, PageSize: page.PageSize, Total: int64(len(rows)), Columns: columnIDs(columns), Summary: summary(matched, columns), Warnings: []string{"仅统计未删除且已审核送货单的历史快照；数量按物料和单位分桶，不可跨桶相加", "导出、打印按执行时数据重新生成完整结果"}}
+	result := ReportProjection{List: rows, Page: page.Page, PageSize: page.PageSize, Total: int64(len(rows)), Columns: columnIDs(columns), Summary: summary(matched, columns), Warnings: []string{"仅统计未删除且已审核送货单的历史快照", "导出、打印按执行时数据重新生成完整结果"}}
 	if paginate {
 		result.List = pageRows(rows, page.Page, page.PageSize)
 	}
@@ -232,7 +234,7 @@ func filterLines(lines []ReconciliationLine, filters req.ReconciliationFilters) 
 		if filters.BrandID != nil && line.BrandID != *filters.BrandID {
 			continue
 		}
-		if filters.CategoryID != nil && line.CategoryID != *filters.CategoryID {
+		if filters.Department != "" && line.Department != filters.Department {
 			continue
 		}
 		if filters.MaterialKeyword != "" && !strings.Contains(strings.ToLower(line.MaterialCode), strings.ToLower(filters.MaterialKeyword)) && !strings.Contains(strings.ToLower(line.MaterialName), strings.ToLower(filters.MaterialKeyword)) {
@@ -259,8 +261,8 @@ func dimensionKey(line ReconciliationLine, id string) []string {
 	// Display labels are deliberately readable, but each identity and snapshot
 	// component remains separate in the key (spaces and '#' are valid data).
 	switch id {
-	case "brand":
-		return []string{id, line.BrandCode, line.BrandName, decimalID(line.BrandID)}
+	case "department":
+		return []string{id, line.Department}
 	case "materialCode":
 		return []string{id, line.MaterialCode, decimalID(line.MaterialID)}
 	case "materialName":
@@ -301,11 +303,13 @@ func dimensionValue(line ReconciliationLine, id string) string {
 	case "noteNumber":
 		return line.NoteNumber
 	case "brand":
-		return line.BrandCode + " " + line.BrandName + " #" + decimalID(line.BrandID)
+		return line.BrandName
+	case "department":
+		return line.Department
 	case "materialCode":
-		return line.MaterialCode + " #" + decimalID(line.MaterialID)
+		return line.MaterialCode
 	case "materialName":
-		return line.MaterialName + " #" + decimalID(line.MaterialID)
+		return line.MaterialName
 	case "specification":
 		if line.Specification == nil {
 			return ""
@@ -314,7 +318,7 @@ func dimensionValue(line ReconciliationLine, id string) string {
 	case "category":
 		return line.CategoryCode + " " + line.CategoryName + " #" + decimalID(line.CategoryID)
 	case "unit":
-		return line.UnitName + " #" + decimalID(line.UnitID)
+		return line.UnitName
 	case "creator":
 		return line.CreatedByName + " #" + decimalID(line.CreatedBy)
 	case "createdAt":
@@ -364,10 +368,10 @@ func summary(lines []ReconciliationLine, columns []ReportColumn) ReportSummary {
 		result.Amount = stringPointer(sum(lines, func(line ReconciliationLine) decimal.Decimal { return line.Amount }).StringFixed(2))
 	}
 	if _, ok := selected["quantity"]; ok {
-		result.QuantityBuckets = buckets(lines, false)
+		result.Quantity = stringPointer(sum(lines, func(line ReconciliationLine) decimal.Decimal { return line.Quantity }).StringFixed(4))
 	}
 	if _, ok := selected["baseQuantity"]; ok {
-		result.BaseQuantityBuckets = buckets(lines, true)
+		result.BaseQuantity = stringPointer(sum(lines, func(line ReconciliationLine) decimal.Decimal { return line.BaseQuantity }).StringFixed(10))
 	}
 	return result
 }

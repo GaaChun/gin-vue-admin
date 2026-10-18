@@ -78,12 +78,12 @@ func TestCategoryCycleRejectsWholeFile(t *testing.T) {
 
 func TestMasterImportRollsBackAfterVersionConflict(t *testing.T) {
 	state := NewMasterExcelState()
-	existing := state.AddBrand("B001", "旧品牌", "jpp", 3)
+	existing := state.AddBrand("B001", "旧客户", "jkh", 3)
 	contents := workbookWithSheets(t, map[string][][]string{
-		"品牌": {
-			{"编号*", "品牌名称*", "助记符*", "版本号"},
-			{"B002", "新品牌", "xpp", ""},
-			{"B001", "修改品牌", "xpp", "2"},
+		"客户": {
+			{"编号*", "客户名称*", "助记符*", "版本号"},
+			{"B002", "新客户", "xkh", ""},
+			{"B001", "修改客户", "xkh", "2"},
 		},
 	})
 	_, err := state.Import("brands", contents, 9)
@@ -91,14 +91,14 @@ func TestMasterImportRollsBackAfterVersionConflict(t *testing.T) {
 	if !ok || domain.Code != VersionConflict || domain.LineNo != 3 || domain.CurrentVersion != 1 {
 		t.Fatalf("version conflict = %#v", err)
 	}
-	if _, found := state.brandByCode("B002"); found || state.brands[existing.ID].Name != "旧品牌" || state.brands[existing.ID].CreatedBy != 3 {
+	if _, found := state.brandByCode("B002"); found || state.brands[existing.ID].Name != "旧客户" || state.brands[existing.ID].CreatedBy != 3 {
 		t.Fatalf("failed file committed changes: %#v", state.brands)
 	}
 }
 
 func TestMaterialWorkbookValidatesCompleteUnitSet(t *testing.T) {
 	contents := workbookWithSheets(t, map[string][][]string{
-		"物料": {{"编号*", "物料名称*", "助记符*", "规格", "别名", "品牌编号*", "类别编号*", "图片文件ID", "版本号"}, {"M1", "物料", "wl", "", "", "B1", "C1", "", ""}, {"M2", "物料二", "we", "", "", "B1", "C1", "", ""}},
+		"物料": {{"编号*", "物料名称*", "助记符*", "规格", "别名", "客户编号*", "类别编号*", "图片文件ID", "版本号"}, {"M1", "物料", "wl", "", "", "B1", "C1", "", ""}, {"M2", "物料二", "we", "", "", "B1", "C1", "", ""}},
 		"物料单位": {{"物料编号*", "单位名称*", "换算系数*", "是否基本单位*", "是否启用*"}, {"UNKNOWN", "个", "1", "是", "是"}, {"M1", "个", "1", "是", "是"}, {"M1", "个", "2", "否", "是"}},
 	})
 	_, err := parseMasterWorkbook("materials", contents)
@@ -117,15 +117,15 @@ func TestMaterialWorkbookValidatesCompleteUnitSet(t *testing.T) {
 
 func TestMaterialImportPreservesReferencedBindingAndCreationAudit(t *testing.T) {
 	state := NewMasterExcelState()
-	brand := state.AddBrand("B001", "品牌", "pp", 1)
+	customer := state.AddBrand("B001", "客户", "kh", 1)
 	category := state.AddCategory("C001", "类别", "lb", 0, 1)
 	unit := state.AddUnit("个", 1)
 	box := state.AddUnit("箱", 1)
-	material := state.AddMaterial(model.Material{Code: "M001", Name: "旧物料", Mnemonic: "wl", BrandID: brand.ID, CategoryID: category.ID}, []model.MaterialUnit{{UnitID: unit.ID, Factor: decimal.NewFromInt(1), IsBase: true, Enabled: true}}, 4)
+	material := state.AddMaterial(model.Material{Code: "M001", Name: "旧物料", Mnemonic: "wl", BrandID: customer.ID, CategoryID: category.ID}, []model.MaterialUnit{{UnitID: unit.ID, Factor: decimal.NewFromInt(1), IsBase: true, Enabled: true}}, 4)
 	bindingID := onlyBindingID(state)
 	state.ReferenceBinding(bindingID)
 	rejected := workbookWithSheets(t, map[string][][]string{
-		"物料": {{"编号*", "物料名称*", "助记符*", "规格", "别名", "品牌编号*", "类别编号*", "图片文件ID", "版本号"}, {"M001", "新物料", "xwl", "", "", "B001", "C001", "", "1"}, {"M002", "新物料二", "xe", "", "", "B001", "C001", "", ""}},
+		"物料": {{"编号*", "物料名称*", "助记符*", "规格", "别名", "客户编号*", "类别编号*", "图片文件ID", "版本号"}, {"M001", "新物料", "xwl", "", "", "B001", "C001", "", "1"}, {"M002", "新物料二", "xe", "", "", "B001", "C001", "", ""}},
 		"物料单位": {{"物料编号*", "单位名称*", "换算系数*", "是否基本单位*", "是否启用*"}, {"M001", "箱", "1", "是", "是"}, {"M002", "个", "1", "是", "是"}},
 	})
 	if _, err := state.Import("materials", rejected, 8); err == nil {
@@ -135,7 +135,7 @@ func TestMaterialImportPreservesReferencedBindingAndCreationAudit(t *testing.T) 
 		t.Fatalf("failed material import changed aggregate: %#v", state.materials)
 	}
 	accepted := workbookWithSheets(t, map[string][][]string{
-		"物料": {{"编号*", "物料名称*", "助记符*", "规格", "别名", "品牌编号*", "类别编号*", "图片文件ID", "版本号"}, {"M001", "普通文本", "wb", "规格", "", "B001", "C001", "", "1"}, {"M002", "新物料", "xwl", "", "", "B001", "C001", "", ""}},
+		"物料": {{"编号*", "物料名称*", "助记符*", "规格", "别名", "客户编号*", "类别编号*", "图片文件ID", "版本号"}, {"M001", "普通文本", "wb", "规格", "", "B001", "C001", "", "1"}, {"M002", "新物料", "xwl", "", "", "B001", "C001", "", ""}},
 		"物料单位": {{"物料编号*", "单位名称*", "换算系数*", "是否基本单位*", "是否启用*"}, {"M001", "个", "1", "是", "是"}, {"M001", "箱", "12.5", "否", "是"}, {"M002", "个", "1", "是", "是"}},
 	})
 	result, err := state.Import("materials", accepted, 8)
@@ -156,12 +156,44 @@ func TestMaterialImportPreservesReferencedBindingAndCreationAudit(t *testing.T) 
 	}
 }
 
+func TestMaterialImportAllowsBlankCustomerAndCategory(t *testing.T) {
+	state := NewMasterExcelState()
+	unit := state.AddUnit("个", 1)
+	contents := workbookWithSheets(t, map[string][][]string{
+		"物料": {{"编号*", "物料名称*", "助记符*", "规格", "别名", "客户编号", "类别编号", "图片文件ID", "版本号"}, {"M-OPTIONAL", "无分类物料", "wfl", "", "", "", "", "", ""}},
+		"物料单位": {{"物料编号*", "单位名称*", "换算系数*", "是否基本单位*", "是否启用*"}, {"M-OPTIONAL", "个", "1", "是", "是"}},
+	})
+	result, err := state.Import("materials", contents, 1)
+	if err != nil || result.CreatedCount != 1 {
+		t.Fatalf("import failed: result=%#v err=%v", result, err)
+	}
+	material, found := state.materialByCode("M-OPTIONAL")
+	if !found || material.BrandID != 0 || material.CategoryID != 0 || bindingFor(state, material.ID, unit.ID).ID == 0 {
+		t.Fatalf("optional-reference material not stored correctly: %#v", material)
+	}
+}
+
 func TestMasterExportPreservesTextAndMaterialUnits(t *testing.T) {
 	state := NewMasterExcelState()
-	brand := state.AddBrand("001", "=品牌", "pp", 1)
+	template, err := masterTemplate("materials")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseMasterWorkbook("materials", template); err != nil {
+		t.Fatalf("material template headings were not importable: %v", err)
+	}
+	templateBook, err := excelize.OpenReader(bytes.NewReader(template))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer templateBook.Close()
+	if active := templateBook.GetSheetName(templateBook.GetActiveSheetIndex()); active != materialSheetName {
+		t.Fatalf("material template opens on %q, want %q", active, materialSheetName)
+	}
+	customer := state.AddBrand("001", "=客户", "kh", 1)
 	category := state.AddCategory("010", "类别", "lb", 0, 1)
 	unit := state.AddUnit("个", 1)
-	state.AddMaterial(model.Material{Code: "M001", Name: "=物料", Mnemonic: "wl", BrandID: brand.ID, CategoryID: category.ID}, []model.MaterialUnit{{UnitID: unit.ID, Factor: decimal.NewFromInt(1), IsBase: true, Enabled: true}}, 1)
+	state.AddMaterial(model.Material{Code: "M001", Name: "=物料", Mnemonic: "wl", BrandID: customer.ID, CategoryID: category.ID}, []model.MaterialUnit{{UnitID: unit.ID, Factor: decimal.NewFromInt(1), IsBase: true, Enabled: true}}, 1)
 	contents, err := state.Export("materials")
 	if err != nil {
 		t.Fatal(err)
@@ -181,9 +213,9 @@ func TestMasterExportPreservesTextAndMaterialUnits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	brands, err := parseMasterWorkbook("brands", brandFile)
-	if err != nil || brands.brands[0].code != "001" || brands.brands[0].name != "=品牌" {
-		t.Fatalf("leading zero or formula-like text lost: %#v %v", brands.brands, err)
+	customers, err := parseMasterWorkbook("brands", brandFile)
+	if err != nil || customers.brands[0].code != "001" || customers.brands[0].name != "=客户" {
+		t.Fatalf("customer export changed text or headings: %#v %v", customers.brands, err)
 	}
 }
 
@@ -235,4 +267,33 @@ func bindingFor(state *MasterExcelState, materialID, unitID uint) model.Material
 		}
 	}
 	return model.MaterialUnit{}
+}
+func TestUnitTemplateContainsHeadersAndImportsExample(t *testing.T) {
+	contents, err := MasterTemplate("units")
+	if err != nil {
+		t.Fatal(err)
+	}
+	book, err := excelize.OpenReader(bytes.NewReader(contents))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer book.Close()
+	if got := book.GetSheetList(); len(got) != 1 || got[0] != unitSheetName {
+		t.Fatalf("template sheets = %#v", got)
+	}
+	rows, err := book.GetRows(unitSheetName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) < 2 || strings.Join(rows[0], "|") != "单位名称*|版本号" || rows[1][0] != "个" {
+		t.Fatalf("template rows = %#v", rows)
+	}
+	state := NewMasterExcelState()
+	result, err := state.Import("units", contents, 1)
+	if err != nil || result.CreatedCount != 1 {
+		t.Fatalf("template import result=%#v err=%v", result, err)
+	}
+	if _, found := state.unitByName("个"); !found {
+		t.Fatal("template example unit was not imported")
+	}
 }

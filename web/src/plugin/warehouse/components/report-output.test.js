@@ -22,11 +22,13 @@ it('renders incomparable nulls as a dash and prints untrusted names as text', ()
   expect(printed.querySelectorAll('td')[1].textContent).toContain('混合单位')
 })
 
-it('never renders quantity buckets when quantity is not part of the report projection', () => {
-  wrapper = mount(ReportSummary, { props: { columns: ['brand', 'amount'], summary: {
-    amount: '68.50', quantityBuckets: [{ materialId: 1, materialName: '物料', unitName: '箱', value: '2.0000' }]
+it('renders scalar quantity totals and omits fields not in the projection', () => {
+  wrapper = mount(ReportSummary, { props: { columns: ['brand', 'quantity'], summary: {
+    quantity: '2.0000',
+    baseQuantity: '4.0000000000'
   } } })
-  expect(wrapper.text()).toContain('68.50')
-  expect(wrapper.text()).not.toContain('2.0000')
+  expect(wrapper.text()).toContain('全局数量合计：2.0000')
+  expect(wrapper.text()).not.toContain('基本数量')
+  expect(wrapper.text()).not.toContain('分桶')
   expect(wrapper.find('ul').exists()).toBe(false)
 })

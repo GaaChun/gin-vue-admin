@@ -88,18 +88,28 @@ func TestDeliverySnapshotSurvivesMasterDataRename(t *testing.T) {
 	}
 }
 
-func TestMixedBrandAndFailedUpdateDoNotMutateNote(t *testing.T) {
+func TestMixedCustomerMaterialsAreAllowedAndFailedUpdateDoesNotMutateNote(t *testing.T) {
 	state := deliveryFixture(time.Now())
-	brand := model.Brand{Code: "B2", Name: "另一品牌"}
+	brand := model.Brand{Code: "B2", Name: "另一客户"}
 	brand.ID = 2
 	state.brands[2] = brand
+	material := model.Material{Code: "M2", Name: "另一物料", BrandID: 2, CategoryID: 1}
+	material.ID = 2
+	state.materials[2] = material
+	binding := state.bindings[1]
+	binding.ID = 2
+	binding.MaterialID = 2
+	state.bindings[2] = binding
 	reserved, _ := state.Reserve(4)
-	note, err := state.Create(4, deliveryInput(reserved.Token, "1", "1"))
-	if err != nil {
-		t.Fatal(err)
+	note, err := state.Create(4, req.CreateDeliveryInput{ReservationToken: reserved.Token, DeliveredAt: time.Now(), BrandID: 1, Details: []req.DeliveryDetailInput{
+		{MaterialID: 1, MaterialUnitID: 1, Quantity: "1", UnitPrice: "1"},
+		{MaterialID: 2, MaterialUnitID: 2, Quantity: "1", UnitPrice: "1"},
+	}})
+	if err != nil || len(state.detailsFor(note.ID)) != 2 {
+		t.Fatalf("mixed-customer materials rejected: note=%#v err=%v", note, err)
 	}
 	before := state.details[firstDetail(state, note.ID)]
-	_, err = state.Update(4, req.UpdateDeliveryInput{VersionedID: req.VersionedID{ID: note.ID}, DeliveredAt: note.DeliveredAt, BrandID: 2, Details: []req.DeliveryDetailInput{{ID: &before.ID, MaterialID: 1, MaterialUnitID: 1, Quantity: "9", UnitPrice: "9"}}})
+	_, err = state.Update(4, req.UpdateDeliveryInput{VersionedID: req.VersionedID{ID: note.ID}, DeliveredAt: note.DeliveredAt, BrandID: 1, Details: []req.DeliveryDetailInput{{ID: &before.ID, MaterialID: 1, MaterialUnitID: 1, Quantity: "0", UnitPrice: "9"}}})
 	after := state.details[before.ID]
 	if err == nil || !after.Quantity.Equal(before.Quantity) || state.notes[note.ID].Version != 1 {
 		t.Fatalf("failed update changed note: err=%v quantity=%s version=%d", err, after.Quantity, state.notes[note.ID].Version)

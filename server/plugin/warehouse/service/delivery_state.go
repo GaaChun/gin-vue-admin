@@ -135,7 +135,7 @@ func (s *DeliveryState) compose(noteID, brandID uint, delivered time.Time, input
 	}
 	brand, ok := s.brands[brandID]
 	if !ok {
-		return model.DeliveryNote{}, nil, domainError(ValidationFailed, "品牌不存在", "brandId")
+		return model.DeliveryNote{}, nil, domainError(ValidationFailed, "客户不存在", "brandId")
 	}
 	note := model.DeliveryNote{DeliveredAt: delivered.UTC(), BrandID: brand.ID, BrandCodeSnapshot: brand.Code, BrandNameSnapshot: brand.Name, Status: string(DeliveryDraft)}
 	if previous, found := s.notes[noteID]; found && previous.BrandID == brandID {
@@ -186,8 +186,8 @@ func (s *DeliveryState) composeDetail(noteID, brandID, line uint, input req.Deli
 		}
 	}
 	material, ok := s.materials[input.MaterialID]
-	if !ok || material.BrandID != brandID {
-		return model.DeliveryDetail{}, domainError(ValidationFailed, "物料品牌与送货单不一致", "details")
+	if !ok {
+		return model.DeliveryDetail{}, domainError(ValidationFailed, "物料不存在", "details")
 	}
 	binding, ok := s.bindings[input.MaterialUnitID]
 	if !ok || binding.MaterialID != material.ID || !binding.Enabled {

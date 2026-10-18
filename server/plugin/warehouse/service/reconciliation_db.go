@@ -55,8 +55,7 @@ func (s *ReconciliationService) readSnapshot(ctx context.Context, use func([]Rec
 			Joins("JOIN wh_delivery_notes AS n ON n.id = d.note_id").
 			Where("n.deleted_at IS NULL AND d.deleted_at IS NULL AND n.status = ?", string(DeliveryReviewed)).
 			Select(`n.delivered_at, n.created_at, n.reviewed_at, n.status,
-			 n.number AS note_number, n.brand_id, n.brand_code_snapshot AS brand_code, n.brand_name_snapshot AS brand_name,
-			 n.created_by, n.created_by_name_snapshot AS created_by_name, n.reviewed_by, n.reviewed_by_name_snapshot AS reviewed_by_name,
+			 n.number AS note_number, n.department, n.brand_id, n.brand_code_snapshot AS brand_code, n.brand_name_snapshot AS brand_name,
 			 d.material_id, d.material_code_snapshot AS material_code, d.material_name_snapshot AS material_name,
 			 d.specification_snapshot AS specification, d.category_id, d.category_code_snapshot AS category_code, d.category_name_snapshot AS category_name,
 			 d.unit_id, d.base_unit_id, d.unit_name_snapshot AS unit_name, d.base_unit_name_snapshot AS base_unit_name,
@@ -200,7 +199,7 @@ func ReportFilterDescription(f req.ReconciliationFilters) string {
 		parts = append(parts, "审核结束="+f.ReviewedTo.Format("2006-01-02T15:04:05Z07:00"))
 	}
 	if f.BrandID != nil {
-		parts = append(parts, "品牌ID="+decimalID(*f.BrandID))
+		parts = append(parts, "客户ID="+decimalID(*f.BrandID))
 	}
 	if f.CategoryID != nil {
 		parts = append(parts, "类别ID="+decimalID(*f.CategoryID))
@@ -218,11 +217,11 @@ func ReportSummaryLines(s ReportSummary) []string {
 	if s.Amount != nil {
 		result = append(result, "全局金额合计："+*s.Amount)
 	}
-	for _, b := range s.QuantityBuckets {
-		result = append(result, fmt.Sprintf("数量桶：%s %s #%d / %s #%d：%s", b.MaterialCode, b.MaterialName, b.MaterialID, b.UnitName, b.UnitID, b.Value))
+	if s.Quantity != nil {
+		result = append(result, "全局数量合计："+*s.Quantity)
 	}
-	for _, b := range s.BaseQuantityBuckets {
-		result = append(result, fmt.Sprintf("基本数量桶：%s %s #%d / %s #%d：%s", b.MaterialCode, b.MaterialName, b.MaterialID, b.UnitName, b.UnitID, b.Value))
+	if s.BaseQuantity != nil {
+		result = append(result, "全局基本数量合计："+*s.BaseQuantity)
 	}
 	return result
 }

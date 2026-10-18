@@ -43,6 +43,17 @@ func TestMaterialCodeConflictButNameMayRepeat(t *testing.T) {
 	}
 }
 
+func TestMaterialCustomerAndCategoryAreOptional(t *testing.T) {
+	input := req.MaterialInput{Name: "物料", Mnemonic: "wl", Code: "M-2", Units: []req.MaterialUnitInput{{UnitID: 1, Factor: "1", IsBase: true, Enabled: true}}}
+	material, _, err := prepareMaterialInput(input)
+	if err != nil {
+		t.Fatalf("material without customer/category rejected: %v", err)
+	}
+	if material.BrandID != 0 || material.CategoryID != 0 {
+		t.Fatalf("optional references were not empty: %#v", material)
+	}
+}
+
 func TestMaterialBindingReplacementPreservesMatchingID(t *testing.T) {
 	existing := model.MaterialUnit{MaterialID: 4, UnitID: 1}
 	existing.ID = 7

@@ -1,12 +1,12 @@
 <template>
   <div class="warehouse-master">
-    <div class="gva-search-box">
+    <div v-show="!detailRoute">
       <el-form :inline="true" :model="search" @submit.prevent="query">
         <el-form-item :label="resource === 'units' ? '单位名称' : '关键词'">
           <el-input v-model="search.keyword" clearable :placeholder="resource === 'units' ? '单位名称' : '编号 / 名称 / 助记符'" @keyup.enter="query" />
         </el-form-item>
-        <el-form-item v-if="isMaterial" label="品牌">
-          <el-select v-model="search.brandId" clearable filterable placeholder="全部品牌" class="brand-select">
+        <el-form-item v-if="isMaterial" label="客户">
+          <el-select v-model="search.brandId" clearable filterable placeholder="全部客户" class="brand-select">
             <el-option v-for="item in brands" :key="idOf(item)" :label="`${item.code} · ${item.name}`" :value="idOf(item)" />
           </el-select>
         </el-form-item>
@@ -17,7 +17,7 @@
       </el-form>
     </div>
     <el-alert v-if="pageError" :title="pageError" type="error" show-icon :closable="false" class="error-alert" />
-    <div class="master-layout">
+    <div v-show="!detailRoute" class="master-layout">
       <aside v-if="isMaterial && treeVisible" class="category-panel gva-table-box">
         <div class="panel-heading"><strong>物料类别（含下级）</strong><el-button link @click="treeVisible = false">收起</el-button></div>
         <el-input v-model="treeKeyword" placeholder="筛选类别" clearable />
@@ -36,18 +36,22 @@
         </div>
         <div v-if="isMaterial && search.categoryId" class="filter-hint">当前类别：{{ categoryName(search.categoryId) }}（含全部后代）</div>
         <div v-if="isCategory" class="filter-hint">树表按顶级分支分页；搜索保留匹配节点的上级路径。</div>
-        <el-table :key="resource" v-loading="loading" :data="rows" :row-key="idOf" :tree-props="{ children: 'children' }" default-expand-all border>
+        <el-table :key="resource" v-loading="loading" :data="rows" :row-key="idOf" :tree-props="{ children: 'children' }" default-expand-all border @row-dblclick="openEditor($event)">
           <el-table-column v-if="resource !== 'units'" prop="code" label="编号" min-width="145" />
           <el-table-column prop="name" :label="`${title}名称`" min-width="170" show-overflow-tooltip />
           <el-table-column v-if="resource !== 'units'" prop="mnemonic" label="助记符" min-width="120" show-overflow-tooltip />
           <template v-if="isMaterial">
-            <el-table-column label="品牌" min-width="130"><template #default="{ row }">{{ brandName(row.brandId) }}</template></el-table-column>
+            <el-table-column label="客户" min-width="130"><template #default="{ row }">{{ brandName(row.brandId) }}</template></el-table-column>
             <el-table-column label="类别" min-width="130"><template #default="{ row }">{{ categoryName(row.categoryId) }}</template></el-table-column>
             <el-table-column prop="specification" label="规格" min-width="120" show-overflow-tooltip />
             <el-table-column prop="alias" label="别名" min-width="100" show-overflow-tooltip />
           </template>
-          <el-table-column label="创建人 / 时间" min-width="185"><template #default="{ row }"><div>用户 #{{ row.createdBy }}</div><div>{{ displayTime(row.CreatedAt || row.createdAt) }}</div></template></el-table-column>
-          <el-table-column label="修改人 / 时间" min-width="185"><template #default="{ row }"><div>用户 #{{ row.updatedBy }}</div><div>{{ displayTime(row.UpdatedAt || row.updatedAt) }}</div></template></el-table-column>
+          <el-table-column label="创建人" min-width="125"><template #default="{ row }">{{ userNickname(row.createdBy) }}</template></el-table-column>
+          <el-table-column label="创建时间" min-width="170"><template #default="{ row }">{{ displayTime(row.CreatedAt || row.createdAt) }}</template></el-table-column>
+          <el-table-column label="修改人" min-width="125"><template #default="{ row }">{{ userNickname(row.updatedBy) }}</template></el-table-column>
+          <el-table-column label="修改时间" min-width="170"><template #default="{ row }">{{ displayTime(row.UpdatedAt || row.updatedAt) }}</template></el-table-column>
+          <el-table-column label="审核人" min-width="125"><template #default="{ row }">{{ userNickname(row.reviewedBy) }}</template></el-table-column>
+          <el-table-column label="审核时间" min-width="170"><template #default="{ row }">{{ displayTime(row.reviewedAt) }}</template></el-table-column>
           <el-table-column prop="version" label="版本" width="75" />
           <el-table-column label="操作" fixed="right" :width="isCategory ? 235 : 145">
             <template #default="{ row }">
@@ -63,7 +67,8 @@
         </div>
       </div>
     </div>
-    <el-drawer v-model="visible" :title="`${form.id ? '编辑' : '新建'}${title}`" :size="isMaterial ? 'min(100%, 980px)' : 'min(100%, 600px)'" :close-on-click-modal="false" :before-close="beforeClose">
+    <div v-if="detailRoute" class="master-detail-page">
+      <div class="master-detail-heading"><h2>{{ `${form.id ? '编辑' : '新建'}${title}` }}</h2><el-button @click="closeEditor">返回列表</el-button></div>
       <div v-loading="detailLoading">
         <el-alert v-if="saveError" :title="saveError" type="error" show-icon :closable="false" class="error-alert">
           <template v-if="conflictVersion" #default>
@@ -84,11 +89,11 @@
             <el-tree-select v-model="form.parentId" :data="parentOptions" :props="treeProps" node-key="id" check-strictly filterable default-expand-all :render-after-expand="false" class="full-width" />
           </el-form-item>
           <template v-if="isMaterial">
-            <el-form-item label="品牌" prop="brandId" required :error="errors.brandId">
-              <el-select v-model="form.brandId" filterable placeholder="请选择品牌" class="full-width"><el-option v-for="item in brands" :key="idOf(item)" :label="`${item.code} · ${item.name}`" :value="idOf(item)" /></el-select>
+            <el-form-item label="客户" prop="brandId" :error="errors.brandId">
+              <el-select v-model="form.brandId" clearable filterable placeholder="请选择客户（可选）" class="full-width"><el-option v-for="item in brands" :key="idOf(item)" :label="`${item.code} · ${item.name}`" :value="idOf(item)" /></el-select>
             </el-form-item>
-            <el-form-item label="类别" prop="categoryId" required :error="errors.categoryId">
-              <el-tree-select v-model="form.categoryId" :data="categoryOptions" :props="treeProps" node-key="id" check-strictly filterable default-expand-all :render-after-expand="false" class="full-width" />
+            <el-form-item label="类别" prop="categoryId" :error="errors.categoryId">
+              <el-tree-select v-model="form.categoryId" :data="categoryOptions" :props="treeProps" node-key="id" check-strictly clearable filterable default-expand-all :render-after-expand="false" class="full-width" />
             </el-form-item>
             <el-form-item label="规格" prop="specification" :error="errors.specification"><el-input v-model="form.specification" maxlength="255" show-word-limit /></el-form-item>
             <el-form-item label="别名" prop="alias" :error="errors.alias"><el-input v-model="form.alias" maxlength="200" show-word-limit /></el-form-item>
@@ -120,15 +125,18 @@
           <el-descriptions v-if="form.id" title="审计信息" :column="2" border size="small">
             <el-descriptions-item label="记录 ID">{{ form.id }}</el-descriptions-item>
             <el-descriptions-item label="版本">{{ form.version }}</el-descriptions-item>
-            <el-descriptions-item label="创建人">用户 #{{ audit.createdBy }}</el-descriptions-item>
-            <el-descriptions-item label="修改人">用户 #{{ audit.updatedBy }}</el-descriptions-item>
+            <el-descriptions-item label="创建人">{{ userNickname(audit.createdBy) }}</el-descriptions-item>
+            <el-descriptions-item label="修改人">{{ userNickname(audit.updatedBy) }}</el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ displayTime(audit.CreatedAt || audit.createdAt) }}</el-descriptions-item>
             <el-descriptions-item label="修改时间">{{ displayTime(audit.UpdatedAt || audit.updatedAt) }}</el-descriptions-item>
+            <el-descriptions-item label="审核人">{{ userNickname(audit.reviewedBy) }}</el-descriptions-item>
+            <el-descriptions-item label="审核时间">{{ displayTime(audit.reviewedAt) }}</el-descriptions-item>
           </el-descriptions>
         </el-form>
       </div>
-      <template #footer><el-button :disabled="saving || uploading" @click="closeEditor">取消</el-button><el-button type="primary" :loading="saving" :disabled="detailLoading || uploading" @click="save">保存</el-button></template>
-    </el-drawer>
+      
+      <div class="master-detail-footer"><el-button :disabled="saving || uploading" @click="closeEditor">取消</el-button><el-button type="primary" :loading="saving" :disabled="detailLoading || uploading" @click="save">保存</el-button></div>
+    </div>
     <el-dialog v-model="importErrorsVisible" title="导入失败：整份文件未提交" width="min(95%, 900px)">
       <el-alert :title="importErrorMessage" type="error" :closable="false" class="error-alert" />
       <el-table :data="importErrors" border><el-table-column prop="sheet" label="工作表" /><el-table-column prop="row" label="行" width="75" /><el-table-column prop="column" label="列" /><el-table-column prop="message" label="原因" min-width="250" /></el-table>
@@ -139,27 +147,31 @@
 
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getUserList } from '@/api/user'
 import { formatDate } from '@/utils/format'
 import { getUrl } from '@/utils/image'
 import { allOptions, idOf, showError } from '../api/common'
 import { deleteMaster, detailMaster, downloadMasterTemplate, exportMaster, getCategoryTree, importMaster, listMaster, saveMaster, suggestMasterMnemonic, uploadMasterImage } from '../api/master'
 
 const route = useRoute()
+const router = useRouter()
 const resource = computed(() => {
   const names = { warehouseUnit: 'units', warehouseBrand: 'brands', warehouseCategory: 'categories', warehouseMaterial: 'materials' }
   const aliases = { unit: 'units', units: 'units', brand: 'brands', brands: 'brands', category: 'categories', categories: 'categories', material: 'materials', materials: 'materials' }
   return names[route.name] || aliases[route.query.kind || route.query.resource || route.query.type] || 'units'
 })
-const title = computed(() => ({ units: '单位', brands: '品牌', categories: '类别', materials: '物料' })[resource.value])
+const title = computed(() => ({ units: '单位', brands: '客户', categories: '类别', materials: '物料' })[resource.value])
 const isMaterial = computed(() => resource.value === 'materials')
 const isCategory = computed(() => resource.value === 'categories')
+const detailRoute = computed(() => route.query.whDetail === resource.value && (route.query.whId || route.query.whNew === '1'))
 const search = reactive({ keyword: '', brandId: undefined, categoryId: undefined })
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const rows = ref([])
+const usersById = ref(new Map())
 const loading = ref(false)
 const pageError = ref('')
 const brands = ref([])
@@ -191,6 +203,19 @@ let editorSequence = 0
 let mnemonicSequence = 0
 let nextUnitKey = 0
 let cleanSnapshot = ''
+function listRouteQuery() {
+  const query = { ...route.query }
+  delete query.whDetail; delete query.whId; delete query.whNew; delete query.whParent
+  return query
+}
+function enterEditor(row, parentId = 0) {
+  const query = { ...route.query, whDetail: resource.value }
+  if (row) query.whId = String(idOf(row))
+  else query.whNew = '1'
+  if (parentId) query.whParent = String(parentId)
+  else delete query.whParent
+  return router.push({ name: route.name, query })
+}
 
 function emptyForm() {
   return { id: 0, version: undefined, name: '', code: '', mnemonic: '', parentId: 0, brandId: undefined, categoryId: undefined, specification: '', alias: '', imageFileId: null, units: [] }
@@ -216,7 +241,14 @@ const parentOptions = computed(() => {
 })
 function categoryName(id) { return categoryMap.value.get(id)?.name || `#${id}` }
 function brandName(id) { return brandMap.value.get(id)?.name || `#${id}` }
+function userNickname(id) { return usersById.value.get(Number(id)) || '—' }
 function displayTime(value) { return value ? formatDate(value) : '—' }
+async function loadUsers() {
+  const response = await getUserList({ page: 1, pageSize: 999 })
+  if (response?.code === 0) {
+    usersById.value = new Map((response.data?.list || []).map(user => [Number(idOf(user)), user.nickName || '—']))
+  }
+}
 function currentFilters() {
   const keyword = search.keyword.trim()
   if (resource.value === 'units') return keyword ? { name: keyword } : {}
@@ -288,7 +320,7 @@ function selectCategory(node) { search.categoryId = node.id || undefined; query(
 function filterTreeNode(value, node) { return !value || [node.name, node.code, node.mnemonic].some(text => String(text || '').toLocaleLowerCase().includes(value.toLocaleLowerCase())) }
 watch(treeKeyword, value => categoryTreeRef.value?.filter(value))
 
-async function openEditor(row, parentId = 0) {
+async function initializeEditor(row, parentId = 0) {
   const sequence = ++editorSequence
   ++mnemonicSequence
   mnemonicLoading.value = false
@@ -329,6 +361,7 @@ async function openEditor(row, parentId = 0) {
     if (sequence === editorSequence) detailLoading.value = false
   }
 }
+function openEditor(row, parentId = 0) { return enterEditor(row, parentId) }
 function editMnemonic() {
   mnemonicManual.value = true
   ++mnemonicSequence
@@ -370,8 +403,6 @@ function validate() {
   }
   if (isCategory.value && form.code.trim().toUpperCase() === 'ROOT') next.code = 'ROOT 为保留根编号，不能使用'
   if (isMaterial.value) {
-    if (!form.brandId) next.brandId = '请选择品牌'
-    if (!form.categoryId) next.categoryId = '请选择类别'
     const seen = new Set()
     if (form.units.filter(unit => unit.isBase && unit.enabled).length !== 1) next.units = '必须且只能有一个启用基本单位'
     for (const unit of form.units) {
@@ -414,8 +445,8 @@ async function save() {
     if (!mnemonicManual.value) await suggestMnemonic()
     if (!validate()) { await locateError(); return }
     await saveMaster(resource.value, writePayload())
-    visible.value = false
     ++editorSequence
+    await router.push({ name: route.name, query: listRouteQuery() })
     ElMessage.success('保存成功')
     await load()
   } catch (error) {
@@ -448,10 +479,18 @@ async function beforeClose(done) {
   ++mnemonicSequence
   done()
 }
-function closeEditor() { beforeClose(() => { visible.value = false }) }
+function closeEditor() {
+  if (saving.value || uploading.value) return
+  if (JSON.stringify(form) !== cleanSnapshot && !detailLoading.value) {
+    ElMessageBox.confirm('当前修改尚未保存，确认放弃？', '关闭编辑', { type: 'warning', confirmButtonText: '放弃修改', cancelButtonText: '继续编辑' })
+      .then(() => router.push({ name: route.name, query: listRouteQuery() })).catch(() => {})
+    return
+  }
+  router.push({ name: route.name, query: listRouteQuery() })
+}
 async function reloadDetail() {
   try { await ElMessageBox.confirm('重新载入将放弃当前修改，请先记录需要保留的内容。', '载入最新版本', { type: 'warning', confirmButtonText: '重新载入', cancelButtonText: '保留修改' }) } catch { return }
-  await openEditor({ ID: form.id })
+  await initializeEditor({ ID: form.id })
 }
 function beforeImageUpload(file) {
   let message = ''
@@ -528,7 +567,18 @@ watch(resource, async () => {
   rows.value = []
   categories.value = []
   try { await refreshOptions() } catch (error) { showError(error) }
+  try { await loadUsers() } catch (error) { showError(error) }
   await load()
+}, { immediate: true })
+watch(() => [route.query.whDetail, route.query.whId, route.query.whNew, route.query.whParent], async ([kind, id, isNew, parent]) => {
+  if (kind !== resource.value || (!id && isNew !== '1')) {
+    ++editorSequence
+    visible.value = false
+    detailLoading.value = false
+    return
+  }
+  const selected = id ? { ID: Number(id) } : null
+  await initializeEditor(selected, Number(parent) || 0)
 }, { immediate: true })
 </script>
 

@@ -55,6 +55,7 @@ func (r *router) Init(group *gin.RouterGroup) {
 	delivery := group.Group("/delivery")
 	deliveryHandler := api.DefaultDeliveryAPI()
 	delivery.POST("/reserveNumber", deliveryHandler.ReserveNumber)
+	delivery.GET("/departments", deliveryHandler.Departments)
 	delivery.GET("/list", deliveryHandler.List)
 	delivery.GET("/detail", deliveryHandler.Detail)
 	delivery.POST("/create", deliveryHandler.Create)

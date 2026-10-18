@@ -10,6 +10,7 @@ type DeliveryNote struct {
 	BusinessModel
 	Number                 string          `json:"number" gorm:"column:number;type:varchar(14);not null;uniqueIndex;comment:不可变送货单号"`
 	DeliveredAt            time.Time       `json:"deliveredAt" gorm:"column:delivered_at;type:datetime(6);not null;index:idx_wh_delivery_notes_status_delivered,priority:2;index:idx_wh_delivery_notes_brand_delivered,priority:2;comment:送货时间"`
+	Department             string          `json:"department" gorm:"column:department;type:varchar(100);not null;default:'';comment:部门"`
 	BrandID                uint            `json:"brandId" gorm:"column:brand_id;not null;index:idx_wh_delivery_notes_brand_delivered,priority:1;comment:品牌ID"`
 	BrandCodeSnapshot      string          `json:"brandCodeSnapshot" gorm:"column:brand_code_snapshot;type:varchar(64);not null;comment:品牌编号快照"`
 	BrandNameSnapshot      string          `json:"brandNameSnapshot" gorm:"column:brand_name_snapshot;type:varchar(100);not null;comment:品牌名称快照"`

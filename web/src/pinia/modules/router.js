@@ -15,6 +15,7 @@ const formatRouter = (routes, routeMap, parent) => {
   routes &&
     routes.forEach((item) => {
       item.parent = parent
+      if (item.name === 'warehouseBrand') item.meta.title = '客户'
       item.meta.btns = item.btns
       item.meta.hidden = item.hidden
       if (item.meta.defaultMenu === true) {

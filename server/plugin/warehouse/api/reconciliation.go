@@ -35,7 +35,7 @@ func (a ReconciliationAPI) Columns(c *gin.Context) {
 }
 
 // Options returns audited historical snapshot filter choices.
-// @Summary 对账历史品牌类别候选
+// @Summary 对账历史客户类别候选
 // @Tags warehouse-reconciliation
 // @Produce json
 // @Success 200 {object} response.Response

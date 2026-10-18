@@ -182,7 +182,7 @@ func (s *MasterService) DeleteBrand(ctx context.Context, actor uint, in req.Dele
 			return e
 		}
 		if n > 0 {
-			return NewDomainError(ReferenceInUse, "品牌正在被物料引用")
+			return NewDomainError(ReferenceInUse, "客户正在被物料引用")
 		}
 		return nil
 	})

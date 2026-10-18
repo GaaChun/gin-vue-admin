@@ -110,8 +110,8 @@ type MaterialInput struct {
 	Name        string              `json:"name" binding:"required"`
 	Mnemonic    string              `json:"mnemonic" binding:"required"`
 	Code        string              `json:"code" binding:"required"`
-	BrandID     uint                `json:"brandId" binding:"required,gt=0"`
-	CategoryID  uint                `json:"categoryId" binding:"required,gt=0"`
+	BrandID     uint                `json:"brandId"`
+	CategoryID  uint                `json:"categoryId"`
 	Specification *string           `json:"specification,omitempty"`
 	Alias       *string             `json:"alias,omitempty"`
 	ImageFileID *uint               `json:"imageFileId,omitempty"`
@@ -139,10 +139,10 @@ type DeliveryDetailInput struct {
 	UnitPrice      string `json:"unitPrice" binding:"required"`
 }
 
-// CreateDeliveryInput creates a draft note by consuming a server-issued reservation.
 type CreateDeliveryInput struct {
 	ReservationToken string                `json:"reservationToken" binding:"required"`
 	DeliveredAt      time.Time             `json:"deliveredAt" binding:"required"`
+	Department       string                `json:"department"`
 	BrandID          uint                  `json:"brandId" binding:"required,gt=0"`
 	Details          []DeliveryDetailInput `json:"details" binding:"required,min=1"`
 }
@@ -152,6 +152,7 @@ type CreateDeliveryInput struct {
 type UpdateDeliveryInput struct {
 	VersionedID
 	DeliveredAt time.Time             `json:"deliveredAt" binding:"required"`
+	Department  string                `json:"department"`
 	BrandID     uint                  `json:"brandId" binding:"required,gt=0"`
 	Details     []DeliveryDetailInput `json:"details" binding:"required,min=1"`
 }
@@ -182,8 +183,9 @@ type ReconciliationFilters struct {
 	ReviewedTo     *time.Time `json:"reviewedTo,omitempty"`
 	Number         string     `json:"number,omitempty"`
 	BrandID        *uint      `json:"brandId,omitempty"`
-	CategoryID     *uint      `json:"categoryId,omitempty"`
-	MaterialKeyword string    `json:"materialKeyword,omitempty"`
+	CategoryID      *uint      `json:"categoryId,omitempty"`
+	Department      string     `json:"department,omitempty"`
+	MaterialKeyword string     `json:"materialKeyword,omitempty"`
 }
 
 // ReconciliationQuery selects report columns and a page of the shared projection.
@@ -228,6 +230,7 @@ type DeliveryListQuery struct {
 	BrandID       *uint      `json:"brandId,omitempty" form:"brandId"`
 	Status        string     `json:"status,omitempty" form:"status"`
 	Number        string     `json:"number,omitempty" form:"number"`
+	Department    string     `json:"department,omitempty" form:"department"`
 }
 
 // ReportSchemeListQuery filters paginated report schemes.

@@ -3,13 +3,15 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/flipped-aurora/gin-vue-admin/server/global"
 	"github.com/flipped-aurora/gin-vue-admin/server/plugin/warehouse/model"
 	req "github.com/flipped-aurora/gin-vue-admin/server/plugin/warehouse/model/request"
 	resp "github.com/flipped-aurora/gin-vue-admin/server/plugin/warehouse/model/response"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"time"
 )
 
 // DeliveryService persists numbering and delivery commands in one transaction.
@@ -56,6 +58,7 @@ func (s *DeliveryService) Create(ctx context.Context, actor uint, actorName stri
 		if err != nil {
 			return err
 		}
+		note.Department = in.Department
 		note.Number = reservation.Number
 		note.Status = string(DeliveryDraft)
 		note.CreatedByNameSnapshot = actorName
@@ -105,6 +108,7 @@ func (s *DeliveryService) Update(ctx context.Context, actor uint, in req.UpdateD
 		if err != nil {
 			return err
 		}
+		note.Department = in.Department
 		note.BusinessModel = next.Audit
 		note.Number, note.Status, note.CreatedByNameSnapshot = current.Number, current.Status, current.CreatedByNameSnapshot
 		if err := tx.Save(&note).Error; err != nil {
@@ -215,6 +219,9 @@ func (s *DeliveryService) List(ctx context.Context, query req.DeliveryListQuery)
 	if query.BrandID != nil {
 		db = db.Where("brand_id = ?", *query.BrandID)
 	}
+	if query.Department != "" {
+		db = db.Where("department = ?", query.Department)
+	}
 	if query.Status != "" {
 		db = db.Where("status = ?", query.Status)
 	}
@@ -232,6 +239,23 @@ func (s *DeliveryService) List(ctx context.Context, query req.DeliveryListQuery)
 	}
 	err := db.Order("delivered_at desc, id desc").Offset((query.Page - 1) * query.PageSize).Limit(query.PageSize).Find(&result.List).Error
 	return result, err
+}
+
+// Departments returns distinct, nonblank department values from delivery notes.
+func (s *DeliveryService) Departments(ctx context.Context) ([]string, error) {
+	var departments []string
+	err := s.db.WithContext(ctx).Model(&model.DeliveryNote{}).
+		Distinct("department").Where("department <> ''").Order("department").Pluck("department", &departments).Error
+	if err != nil {
+		return nil, err
+	}
+	nonblank := departments[:0]
+	for _, department := range departments {
+		if strings.TrimSpace(department) != "" {
+			nonblank = append(nonblank, department)
+		}
+	}
+	return nonblank, nil
 }
 
 func reserveNumber(tx *gorm.DB, actor uint, now time.Time) (model.NumberReservation, error) {
@@ -267,7 +291,7 @@ func composePersisted(tx *gorm.DB, noteID, brandID uint, delivered time.Time, in
 	}
 	var brand model.Brand
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&brand, brandID).Error; err != nil {
-		return model.DeliveryNote{}, nil, domainError(ValidationFailed, "品牌不存在", "brandId")
+		return model.DeliveryNote{}, nil, domainError(ValidationFailed, "客户不存在", "brandId")
 	}
 	state.brands[brand.ID] = brand
 	for _, input := range inputs {

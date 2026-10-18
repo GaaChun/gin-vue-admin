@@ -9,5 +9,9 @@ export const fmtTitle = (title, now) => {
       title = title.replace(item, value)
     })
   }
+  const query = now?.query || {}
+  if (query.whDetail || query.whDelivery === '1') {
+    title = `${title}-${query.whNew === '1' ? '新建' : '编辑'}`
+  }
   return title
 }
