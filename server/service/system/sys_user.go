@@ -13,6 +13,7 @@ import (
 	"github.com/flipped-aurora/gin-vue-admin/server/utils"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 //@author: [piexlmax](https://github.com/piexlmax)
@@ -277,8 +278,30 @@ func (userService *UserService) SetSelfInfo(req system.SysUser) error {
 //@param: req datatypes.JSON, uid uint
 //@return: err error
 
-func (userService *UserService) SetSelfSetting(req common.JSONMap, uid uint) error {
-	return global.GVA_DB.Model(&system.SysUser{}).Where("id = ?", uid).Update("origin_setting", req).Error
+func (userService *UserService) SetSelfSetting(updates common.JSONMap, uid uint) error {
+	return global.GVA_DB.Transaction(func(tx *gorm.DB) error {
+		query := tx
+		if tx.Dialector.Name() == "mysql" || tx.Dialector.Name() == "postgres" {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		var user system.SysUser
+		if err := query.Select("origin_setting").First(&user, uid).Error; err != nil {
+			return err
+		}
+		settings := mergeUserSettings(user.OriginSetting, updates)
+		return tx.Model(&system.SysUser{}).Where("id = ?", uid).Update("origin_setting", settings).Error
+	})
+}
+
+func mergeUserSettings(existing, updates common.JSONMap) common.JSONMap {
+	merged := make(common.JSONMap, len(existing)+len(updates))
+	for key, value := range existing {
+		merged[key] = value
+	}
+	for key, value := range updates {
+		merged[key] = value
+	}
+	return merged
 }
 
 //@author: [piexlmax](https://github.com/piexlmax)

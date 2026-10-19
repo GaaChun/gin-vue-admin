@@ -21,7 +21,6 @@ func Api(_ context.Context) {
 		api("GET", "/warehouse/delivery/list", "查询送货单"),
 		api("GET", "/warehouse/delivery/departments", "查询历史部门候选"),
 		api("GET", "/warehouse/delivery/detail", "查询送货单详情"),
-		api("GET", "/warehouse/reconciliation/columns", "查询对账列字典"),
 		api("GET", "/warehouse/reconciliation/options", "查询历史快照筛选选项"),
 		api("POST", "/warehouse/reconciliation/query", "查询对账表"),
 		api("POST", "/warehouse/reconciliation/export", "导出全量对账表"),

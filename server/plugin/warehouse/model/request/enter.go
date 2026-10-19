@@ -43,6 +43,12 @@ func (query PageQuery) WithDefaults() PageQuery {
 	return query
 }
 
+// SortQuery sorts a paginated list by a server-approved field.
+type SortQuery struct {
+	SortBy    string `json:"sortBy,omitempty" form:"sortBy"`
+	SortOrder string `json:"sortOrder,omitempty" form:"sortOrder"`
+}
+
 // MasterInput contains the fields shared by simple master-data write commands.
 type MasterInput struct {
 	Name string `json:"name" binding:"required"`
@@ -99,23 +105,23 @@ type CategoryInput struct {
 
 // MaterialUnitInput is a complete writable material-unit binding.
 type MaterialUnitInput struct {
-	UnitID uint   `json:"unitId" binding:"required,gt=0"`
-	Factor string `json:"factor" binding:"required"`
-	IsBase bool   `json:"isBase"`
-	Enabled bool  `json:"enabled"`
+	UnitID  uint   `json:"unitId" binding:"required,gt=0"`
+	Factor  string `json:"factor" binding:"required"`
+	IsBase  bool   `json:"isBase"`
+	Enabled bool   `json:"enabled"`
 }
 
 // MaterialInput contains writable material fields and its complete unit set.
 type MaterialInput struct {
-	Name        string              `json:"name" binding:"required"`
-	Mnemonic    string              `json:"mnemonic" binding:"required"`
-	Code        string              `json:"code" binding:"required"`
-	BrandID     uint                `json:"brandId"`
-	CategoryID  uint                `json:"categoryId"`
-	Specification *string           `json:"specification,omitempty"`
-	Alias       *string             `json:"alias,omitempty"`
-	ImageFileID *uint               `json:"imageFileId,omitempty"`
-	Units       []MaterialUnitInput `json:"units" binding:"required,min=1"`
+	Name          string              `json:"name" binding:"required"`
+	Mnemonic      string              `json:"mnemonic" binding:"required"`
+	Code          string              `json:"code" binding:"required"`
+	BrandID       uint                `json:"brandId"`
+	CategoryID    uint                `json:"categoryId"`
+	Specification *string             `json:"specification,omitempty"`
+	Alias         *string             `json:"alias,omitempty"`
+	ImageFileID   *uint               `json:"imageFileId,omitempty"`
+	Units         []MaterialUnitInput `json:"units" binding:"required,min=1"`
 }
 
 // CreateMaterialInput creates a material from its explicitly writable fields.
@@ -177,12 +183,12 @@ type UpdateReportSchemeInput struct {
 
 // ReconciliationFilters constrains report data without exposing persistence fields.
 type ReconciliationFilters struct {
-	DeliveredFrom  *time.Time `json:"deliveredFrom,omitempty"`
-	DeliveredTo    *time.Time `json:"deliveredTo,omitempty"`
-	ReviewedFrom   *time.Time `json:"reviewedFrom,omitempty"`
-	ReviewedTo     *time.Time `json:"reviewedTo,omitempty"`
-	Number         string     `json:"number,omitempty"`
-	BrandID        *uint      `json:"brandId,omitempty"`
+	DeliveredFrom   *time.Time `json:"deliveredFrom,omitempty"`
+	DeliveredTo     *time.Time `json:"deliveredTo,omitempty"`
+	ReviewedFrom    *time.Time `json:"reviewedFrom,omitempty"`
+	ReviewedTo      *time.Time `json:"reviewedTo,omitempty"`
+	Number          string     `json:"number,omitempty"`
+	BrandID         *uint      `json:"brandId,omitempty"`
 	CategoryID      *uint      `json:"categoryId,omitempty"`
 	Department      string     `json:"department,omitempty"`
 	MaterialKeyword string     `json:"materialKeyword,omitempty"`
@@ -193,17 +199,18 @@ type ReconciliationQuery struct {
 	Filters ReconciliationFilters `json:"filters"`
 	Columns []string              `json:"columns" binding:"required,min=1"`
 	PageQuery
+	SortQuery
 }
 
-// UnitListQuery filters paginated unit data.
 type UnitListQuery struct {
 	PageQuery
+	SortQuery
 	Name string `json:"name,omitempty" form:"name"`
 }
 
-// BrandListQuery filters paginated brand data.
 type BrandListQuery struct {
 	PageQuery
+	SortQuery
 	Keyword string `json:"keyword,omitempty" form:"keyword"`
 }
 
@@ -214,9 +221,9 @@ type CategoryListQuery struct {
 	Keyword  string `json:"keyword,omitempty" form:"keyword"`
 }
 
-// MaterialListQuery filters paginated material data.
 type MaterialListQuery struct {
 	PageQuery
+	SortQuery
 	BrandID    *uint  `json:"brandId,omitempty" form:"brandId"`
 	CategoryID *uint  `json:"categoryId,omitempty" form:"categoryId"`
 	Keyword    string `json:"keyword,omitempty" form:"keyword"`
@@ -225,6 +232,7 @@ type MaterialListQuery struct {
 // DeliveryListQuery filters paginated delivery notes.
 type DeliveryListQuery struct {
 	PageQuery
+	SortQuery
 	DeliveredFrom *time.Time `json:"deliveredFrom,omitempty" form:"deliveredFrom"`
 	DeliveredTo   *time.Time `json:"deliveredTo,omitempty" form:"deliveredTo"`
 	BrandID       *uint      `json:"brandId,omitempty" form:"brandId"`

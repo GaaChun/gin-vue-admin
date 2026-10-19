@@ -3,6 +3,8 @@ import { useRouterStore } from '@/pinia/modules/router'
 import getPageTitle from '@/utils/page'
 import router from '@/router'
 import Nprogress from 'nprogress'
+import { recordMenuVisit } from '@/api/menu'
+import { emitter } from '@/utils/bus'
 import 'nprogress/nprogress.css'
 
 // 配置 NProgress
@@ -209,9 +211,24 @@ router.beforeEach(async (to, from) => {
 })
 
 // 路由加载完成
-router.afterEach(() => {
+router.afterEach((to, from) => {
   document.querySelector('.main-cont.main-right')?.scrollTo(0, 0)
   Nprogress.done()
+
+  const userStore = useUserStore()
+  const routerStore = useRouterStore()
+  const menu = routerStore.routeMap[to.name]
+  if (
+    to.fullPath !== from.fullPath &&
+    userStore.token &&
+    menu?.ID &&
+    !menu.hidden &&
+    !isExternalUrl(menu.path)
+  ) {
+    recordMenuVisit(Number(menu.ID))
+      .then(() => emitter.emit('recent-visits-updated'))
+      .catch(() => {})
+  }
 })
 
 // 路由错误处理

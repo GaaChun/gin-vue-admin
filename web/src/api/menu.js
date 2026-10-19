@@ -48,6 +48,10 @@ export const getBaseMenuTree = () => {
   })
 }
 
+export const recordMenuVisit = (menuId) => service({ url: '/menu/recordVisit', method: 'post', data: { menuId } })
+export const getRecentMenuVisits = () => service({ url: '/menu/recentVisits', method: 'post' })
+
+
 // @Summary 添加用户menu关联关系
 // @Produce  application/json
 // @Param menus Object authorityId string

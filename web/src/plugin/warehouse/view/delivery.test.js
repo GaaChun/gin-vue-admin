@@ -23,10 +23,12 @@ vi.mock('../api/common', () => ({
   request: mocks.request,
   allOptions: mocks.allOptions,
   idOf: value => value?.ID ?? value?.id,
+  pageSequenceNumber: (index, page, pageSize) => (page - 1) * pageSize + index + 1,
   showError: mocks.showError
 }))
 vi.mock('@/api/user', () => ({ getUserList: vi.fn(async () => ({ code: 0, data: { list: [] } })) }))
 vi.mock('../components/delivery-material-picker.vue', () => ({ default: { props: ['materials'], template: '<div class="picker-materials">{{ materials.map(material => material.code).join(",") }}</div>' } }))
+vi.mock('../api/table-widths', () => ({ getTableWidths: vi.fn(async () => ({})), saveTableWidths: vi.fn(async () => ({})) }))
 
 let wrapper
 afterEach(() => {
@@ -353,4 +355,63 @@ it('labels create and edit route tabs with the operation', () => {
   expect(fmtTitle('客户', { params: {}, query: { whDetail: 'brands', whNew: '1' } })).toBe('客户-新建')
   expect(fmtTitle('客户', { params: {}, query: { whDetail: 'brands', whId: '4' } })).toBe('客户-编辑')
   expect(fmtTitle('送货单', { params: {}, query: { whDelivery: '1', whNew: '1' } })).toBe('送货单-新建')
+})
+it('sorts the complete delivery list server-side when a sortable header changes', async () => {
+  mocks.routeQuery = {}
+  mocks.allOptions.mockResolvedValue([])
+  mocks.request.mockImplementation(async ({ url }) => {
+    if (url.endsWith('/list')) return { list: [], total: 0, page: 1, pageSize: 20 }
+    if (url.endsWith('/departments')) return []
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  wrapper = mount(Delivery, { global: { stubs: {
+    'el-table': { props: ['data'], template: '<div><slot /></div>' },
+    'el-table-column': { props: ['label', 'prop', 'sortable'], template: '<div />' }
+  } } })
+  await flushPromises()
+
+  wrapper.vm.$.setupState.changeSort({ prop: 'totalAmount', order: 'descending' })
+  await flushPromises()
+
+  const calls = mocks.request.mock.calls.map(([request]) => request).filter(request => request.url.endsWith('/list'))
+  expect(calls.at(-1).params).toMatchObject({ page: 1, sortBy: 'totalAmount', sortOrder: 'desc' })
+  expect(calls.at(-1).params.pageSize).toBe(20)
+})
+it('sorts displayed detail rows without changing their submitted order and uses compact rows', async () => {
+  mocks.allOptions.mockResolvedValue([])
+  const aggregate = {
+    note: { id: 10, version: 1, number: 'SK260101000001', status: 'draft', brandId: 2, deliveredAt: '2026-01-01T00:00:00Z' },
+    details: [
+      { id: 4, materialId: 7, materialUnitId: 8, unitId: 9, baseUnitId: 9, factor: '1', quantity: '2', unitPrice: '20', amount: '40', materialCodeSnapshot: 'M2', materialNameSnapshot: '第二项', unitNameSnapshot: '件' },
+      { id: 5, materialId: 6, materialUnitId: 8, unitId: 9, baseUnitId: 9, factor: '1', quantity: '1', unitPrice: '10', amount: '10', materialCodeSnapshot: 'M1', materialNameSnapshot: '第一项', unitNameSnapshot: '件' }
+    ]
+  }
+  mocks.request.mockImplementation(async ({ url }) => {
+    if (url.endsWith('/detail')) return aggregate
+    if (url === '/warehouse/master/materials/detail') return { units: [{ ID: 8, unitId: 9, factor: '1', enabled: true, isBase: true, name: '件' }] }
+    if (url.endsWith('/update') || url.endsWith('/list') || url.endsWith('/departments')) return url.endsWith('/list') ? { list: [], total: 0, page: 1, pageSize: 20 } : {}
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  wrapper = mount(Delivery, { global: { stubs: {
+    'el-table': { props: ['data', 'size'], template: '<div class="detail-table-render" :data-size="size"><slot /></div>' },
+    'el-table-column': {
+      props: ['label', 'prop', 'sortable', 'type'],
+      data: () => ({ fakeRow: { keyword: '', units: [], errors: {}, status: 'draft', rowKey: 'test', quantity: '', unitPrice: '', materialCode: '', materialName: '', specification: '', unitName: '' } }),
+      template: '<div class="detail-column" :data-prop="prop" :data-sortable="sortable"><slot :row="fakeRow" /></div>'
+    }
+  } } })
+  await flushPromises()
+
+  const state = wrapper.vm.$.setupState
+  expect(wrapper.find('.detail-table').attributes('data-size')).toBe('small')
+  expect(wrapper.findAll('.detail-table .detail-column').filter(column => column.attributes('data-sortable') === 'custom')).toHaveLength(7)
+  state.changeDetailSort({ prop: 'quantity', order: 'ascending' })
+  expect(state.displayRows.map(row => row.materialCode)).toEqual(['M1', 'M2'])
+  expect(state.rows.map(row => row.materialCode)).toEqual(['M2', 'M1'])
+
+  await state.save()
+  await flushPromises()
+  const update = mocks.request.mock.calls.map(([request]) => request).find(request => request.url.endsWith('/update'))
+  expect(update.data.details.map(detail => detail.id)).toEqual([4, 5])
+  expect(update.data.details.map(detail => detail.materialId)).toEqual([7, 6])
 })

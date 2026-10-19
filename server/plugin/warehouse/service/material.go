@@ -169,9 +169,19 @@ func (s *MasterService) ListMaterials(ctx context.Context, q req.MaterialListQue
 		like := "%" + keyword + "%"
 		db = db.Where("code LIKE ? OR name LIKE ? OR mnemonic LIKE ?", like, like, like)
 	}
-	err := db.Count(&result.Total).Error
+	orderColumns := auditSortColumns("wh_materials")
+	for _, field := range []string{"code", "name", "mnemonic", "specification", "alias"} {
+		orderColumns[field] = "wh_materials." + field
+	}
+	orderColumns["brandName"] = "(SELECT name FROM wh_brands WHERE wh_brands.id = wh_materials.brand_id)"
+	orderColumns["categoryName"] = "(SELECT name FROM wh_categories WHERE wh_categories.id = wh_materials.category_id)"
+	order, err := resolveMasterOrder(q.SortQuery, orderColumns)
+	if err != nil {
+		return result, err
+	}
+	err = db.Count(&result.Total).Error
 	if err == nil {
-		err = db.Order("id DESC").Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&result.List).Error
+		err = db.Order(order).Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&result.List).Error
 	}
 	result.Page = q.Page
 	result.PageSize = q.PageSize

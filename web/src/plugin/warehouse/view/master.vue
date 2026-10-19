@@ -36,24 +36,25 @@
         </div>
         <div v-if="isMaterial && search.categoryId" class="filter-hint">当前类别：{{ categoryName(search.categoryId) }}（含全部后代）</div>
         <div v-if="isCategory" class="filter-hint">树表按顶级分支分页；搜索保留匹配节点的上级路径。</div>
-        <el-table :key="resource" v-loading="loading" :data="rows" :row-key="idOf" :tree-props="{ children: 'children' }" default-expand-all border @row-dblclick="openEditor($event)">
-          <el-table-column v-if="resource !== 'units'" prop="code" label="编号" min-width="145" />
-          <el-table-column prop="name" :label="`${title}名称`" min-width="170" show-overflow-tooltip />
-          <el-table-column v-if="resource !== 'units'" prop="mnemonic" label="助记符" min-width="120" show-overflow-tooltip />
+        <el-table :key="resource" v-loading="loading" :data="rows" :row-key="idOf" :tree-props="{ children: 'children' }" default-expand-all border size="small" @sort-change="changeSort" @header-dragend="onHeaderDragEnd" @row-dblclick="openEditor($event)">
+          <el-table-column type="index" column-key="__index" label="序号" :width="columnWidths.__index || 65" align="center" :index="pageIndex" />
+          <el-table-column v-if="resource !== 'units'" prop="code" label="编号" :width="columnWidths.code" min-width="145" sortable="custom" />
+          <el-table-column prop="name" :label="`${title}名称`" :width="columnWidths.name" min-width="170" show-overflow-tooltip sortable="custom" />
+          <el-table-column v-if="resource !== 'units'" prop="mnemonic" label="助记符" :width="columnWidths.mnemonic" min-width="120" show-overflow-tooltip sortable="custom" />
           <template v-if="isMaterial">
-            <el-table-column label="客户" min-width="130"><template #default="{ row }">{{ brandName(row.brandId) }}</template></el-table-column>
-            <el-table-column label="类别" min-width="130"><template #default="{ row }">{{ categoryName(row.categoryId) }}</template></el-table-column>
-            <el-table-column prop="specification" label="规格" min-width="120" show-overflow-tooltip />
-            <el-table-column prop="alias" label="别名" min-width="100" show-overflow-tooltip />
+            <el-table-column prop="brandName" label="客户" :width="columnWidths.brandName" min-width="130" sortable="custom"><template #default="{ row }">{{ brandName(row.brandId) }}</template></el-table-column>
+            <el-table-column prop="categoryName" label="类别" :width="columnWidths.categoryName" min-width="130" sortable="custom"><template #default="{ row }">{{ categoryName(row.categoryId) }}</template></el-table-column>
+            <el-table-column prop="specification" label="规格" :width="columnWidths.specification" min-width="120" show-overflow-tooltip sortable="custom" />
+            <el-table-column prop="alias" label="别名" :width="columnWidths.alias" min-width="100" show-overflow-tooltip sortable="custom" />
           </template>
-          <el-table-column label="创建人" min-width="125"><template #default="{ row }">{{ userNickname(row.createdBy) }}</template></el-table-column>
-          <el-table-column label="创建时间" min-width="170"><template #default="{ row }">{{ displayTime(row.CreatedAt || row.createdAt) }}</template></el-table-column>
-          <el-table-column label="修改人" min-width="125"><template #default="{ row }">{{ userNickname(row.updatedBy) }}</template></el-table-column>
-          <el-table-column label="修改时间" min-width="170"><template #default="{ row }">{{ displayTime(row.UpdatedAt || row.updatedAt) }}</template></el-table-column>
-          <el-table-column label="审核人" min-width="125"><template #default="{ row }">{{ userNickname(row.reviewedBy) }}</template></el-table-column>
-          <el-table-column label="审核时间" min-width="170"><template #default="{ row }">{{ displayTime(row.reviewedAt) }}</template></el-table-column>
-          <el-table-column prop="version" label="版本" width="75" />
-          <el-table-column label="操作" fixed="right" :width="isCategory ? 235 : 145">
+          <el-table-column prop="createdByName" label="创建人" :width="columnWidths.createdByName" min-width="125" sortable="custom"><template #default="{ row }">{{ userNickname(row.createdBy) }}</template></el-table-column>
+          <el-table-column prop="createdAt" label="创建时间" :width="columnWidths.createdAt" min-width="170" sortable="custom"><template #default="{ row }">{{ displayTime(row.CreatedAt || row.createdAt) }}</template></el-table-column>
+          <el-table-column prop="updatedByName" label="修改人" :width="columnWidths.updatedByName" min-width="125" sortable="custom"><template #default="{ row }">{{ userNickname(row.updatedBy) }}</template></el-table-column>
+          <el-table-column prop="updatedAt" label="修改时间" :width="columnWidths.updatedAt" min-width="170" sortable="custom"><template #default="{ row }">{{ displayTime(row.UpdatedAt || row.updatedAt) }}</template></el-table-column>
+          <el-table-column prop="reviewedByName" label="审核人" :width="columnWidths.reviewedByName" min-width="125" sortable="custom"><template #default="{ row }">{{ userNickname(row.reviewedBy) }}</template></el-table-column>
+          <el-table-column prop="reviewedAt" label="审核时间" :width="columnWidths.reviewedAt" min-width="170" sortable="custom"><template #default="{ row }">{{ displayTime(row.reviewedAt) }}</template></el-table-column>
+          <el-table-column prop="version" label="版本" :width="columnWidths.version || 75" sortable="custom" />
+          <el-table-column column-key="__actions" label="操作" fixed="right" :width="columnWidths.__actions || (isCategory ? 235 : 145)">
             <template #default="{ row }">
               <el-button link type="primary" @click="openEditor(row)">编辑</el-button>
               <el-button v-if="isCategory" link type="primary" @click="openEditor(null, idOf(row))">新增下级</el-button>
@@ -152,9 +153,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { getUserList } from '@/api/user'
 import { formatDate } from '@/utils/format'
 import { getUrl } from '@/utils/image'
-import { allOptions, idOf, showError } from '../api/common'
+import { allOptions, idOf, pageSequenceNumber, showError } from '../api/common'
 import { deleteMaster, detailMaster, downloadMasterTemplate, exportMaster, getCategoryTree, importMaster, listMaster, saveMaster, suggestMasterMnemonic, uploadMasterImage } from '../api/master'
 
+import { useTableWidths } from '../use-table-widths'
 const route = useRoute()
 const router = useRouter()
 const resource = computed(() => {
@@ -162,6 +164,11 @@ const resource = computed(() => {
   const aliases = { unit: 'units', units: 'units', brand: 'brands', brands: 'brands', category: 'categories', categories: 'categories', material: 'materials', materials: 'materials' }
   return names[route.name] || aliases[route.query.kind || route.query.resource || route.query.type] || 'units'
 })
+const tableWidthKey = computed(() => `warehouse.master.${resource.value}`)
+const { widths: columnWidths, load: loadColumnWidths, headerDragEnd } = useTableWidths()
+function onHeaderDragEnd(newWidth, oldWidth, column) {
+  headerDragEnd(tableWidthKey.value, newWidth, oldWidth, column)
+}
 const title = computed(() => ({ units: '单位', brands: '客户', categories: '类别', materials: '物料' })[resource.value])
 const isMaterial = computed(() => resource.value === 'materials')
 const isCategory = computed(() => resource.value === 'categories')
@@ -170,7 +177,10 @@ const search = reactive({ keyword: '', brandId: undefined, categoryId: undefined
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+const sortBy = ref('')
+const sortOrder = ref('')
 const rows = ref([])
+function pageIndex(index) { return pageSequenceNumber(index, page.value, pageSize.value) }
 const usersById = ref(new Map())
 const loading = ref(false)
 const pageError = ref('')
@@ -267,6 +277,31 @@ function filterCategories(nodes, keyword) {
     return result
   }, [])
 }
+function sortCategoryTree(nodes) {
+  const sorted = (nodes || []).map(node => ({ ...node, children: sortCategoryTree(node.children || []) }))
+  if (!sortBy.value || !sortOrder.value) return sorted
+  const valueFor = row => {
+    if (sortBy.value === 'createdByName') return userNickname(row.createdBy)
+    if (sortBy.value === 'updatedByName') return userNickname(row.updatedBy)
+    if (sortBy.value === 'reviewedByName') return userNickname(row.reviewedBy)
+    if (sortBy.value === 'createdAt') return row.CreatedAt || row.createdAt
+    if (sortBy.value === 'updatedAt') return row.UpdatedAt || row.updatedAt
+    return row[sortBy.value]
+  }
+  const direction = sortOrder.value === 'asc' ? 1 : -1
+  return sorted.sort((left, right) => {
+    const a = valueFor(left)
+    const b = valueFor(right)
+    if (typeof a === 'number' && typeof b === 'number') return (a - b) * direction
+    return String(a ?? '').localeCompare(String(b ?? ''), 'zh-CN', { numeric: true, sensitivity: 'base' }) * direction
+  })
+}
+function changeSort({ prop, order }) {
+  sortBy.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  page.value = 1
+  load()
+}
 async function load() {
   const sequence = ++listSequence
   const kind = resource.value
@@ -276,13 +311,18 @@ async function load() {
     if (kind === 'categories') {
       const tree = await getCategoryTree()
       if (sequence !== listSequence) return
-      categories.value = tree || []
-      const filtered = filterCategories(tree || [], search.keyword.trim().toLocaleLowerCase())
+      const filtered = sortCategoryTree(filterCategories(tree || [], search.keyword.trim().toLocaleLowerCase()))
       total.value = filtered.length
       page.value = Math.max(1, Math.min(page.value, Math.ceil(total.value / pageSize.value) || 1))
       rows.value = filtered.slice((page.value - 1) * pageSize.value, page.value * pageSize.value)
     } else {
-      const result = await listMaster(kind, { ...currentFilters(), page: page.value, pageSize: pageSize.value })
+      const result = await listMaster(kind, {
+        ...currentFilters(),
+        page: page.value,
+        pageSize: pageSize.value,
+        sortBy: sortBy.value || undefined,
+        sortOrder: sortOrder.value || undefined
+      })
       if (sequence !== listSequence) return
       total.value = result.total || 0
       rows.value = result.list || []
@@ -558,6 +598,8 @@ async function runFileAction(action) {
 }
 watch(resource, async () => {
   ++editorSequence
+  sortBy.value = ''
+  sortOrder.value = ''
   ++mnemonicSequence
   visible.value = false
   detailLoading.value = false
@@ -566,6 +608,7 @@ watch(resource, async () => {
   page.value = 1
   rows.value = []
   categories.value = []
+  await loadColumnWidths(tableWidthKey.value)
   try { await refreshOptions() } catch (error) { showError(error) }
   try { await loadUsers() } catch (error) { showError(error) }
   await load()

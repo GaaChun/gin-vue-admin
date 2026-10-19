@@ -3,6 +3,10 @@ import { ElMessage } from 'element-plus'
 
 export const idOf = (row) => row?.ID ?? row?.id
 
+export function pageSequenceNumber(index, page, pageSize) {
+  return (page - 1) * pageSize + index + 1
+}
+
 export function unwrap(response) {
   if (response?.code === 0) return response.data
   const payload = response?.data?.code !== undefined ? response.data : response

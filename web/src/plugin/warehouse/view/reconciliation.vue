@@ -98,7 +98,7 @@
             <el-button :disabled="!lastQuery || loading" :loading="printing" @click="printAll">打印全部</el-button>
           </div>
         </div>
-        <el-form label-position="top" @submit.prevent="search">
+        <el-form label-position="left" @submit.prevent="search">
           <div class="report-filters">
             <el-form-item label="送货日期">
               <el-date-picker v-model="filters.deliveredRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期（含）" />
@@ -158,11 +158,13 @@
           :max-height="'calc(100vh - 470px)'"
           :show-summary="Boolean(lastQuery)"
           :summary-method="tableSummary"
+          @sort-change="changeReportSort"
+          @header-dragend="onHeaderDragEnd"
           empty-text="无符合条件的已审核数据"
           class="report-table"
         >
-          <el-table-column type="index" label="#" width="58" fixed="left" align="center" />
-          <el-table-column v-for="column in resultColumns" :key="column.id" :prop="column.id" :label="column.label" :min-width="columnWidth(column)" show-overflow-tooltip :align="column.kind === 'metric' ? 'right' : 'left'">
+          <el-table-column type="index" column-key="__index" label="序号" :width="columnWidths.__index || 65" fixed="left" align="center" :index="pageIndex" />
+          <el-table-column v-for="column in resultColumns" :key="column.id" :prop="column.id" :label="column.label" :width="columnWidths[column.id] || columnWidth(column)" min-width="48" show-overflow-tooltip sortable="custom" :align="column.kind === 'metric' ? 'right' : 'left'">
             <template #default="{ row }">
               <el-tooltip v-if="row.values[column.id] == null && row.unavailable?.[column.id]" :content="row.unavailable[column.id]" placement="top"><span class="unavailable">—</span></el-tooltip>
               <span v-else>{{ row.values[column.id] ?? '—' }}</span>
@@ -203,10 +205,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/pinia/modules/user'
-import { idOf, showError } from '../api/common'
+import { idOf, pageSequenceNumber, showError } from '../api/common'
 import { loadReportColumns, loadReportOptions, queryReport, exportReport, printReport, listReportSchemes, getReportScheme, createReportScheme, updateReportScheme, deleteReportScheme, publishReportScheme } from '../api/reconciliation'
 
 import ReportPrintView from '../components/report-print-view.vue'
+import { useTableWidths } from '../use-table-widths'
 
 defineOptions({ name: 'WarehouseReconciliation' })
 const defaults = ['deliveryDay', 'noteNumber', 'brand', 'department', 'materialCode', 'materialName', 'specification', 'unit', 'quantity', 'unitPrice', 'amount']
@@ -225,6 +228,9 @@ const blankFilters = () => ({ deliveredRange: null, reviewedRange: null, brandId
 const filters = reactive(blankFilters())
 const page = ref(1)
 const pageSize = ref(20)
+const sortBy = ref('')
+const sortOrder = ref('')
+function pageIndex(index) { return pageSequenceNumber(index, page.value, pageSize.value) }
 const projection = ref({ list: [], columns: [], total: 0, summary: {}, warnings: [] })
 const lastQuery = ref(null)
 const loading = ref(false)
@@ -236,6 +242,11 @@ const generatedAt = ref('')
 let requestSequence = 0
 const columnLabel = (id) => available.value.find((column) => column.id === id)?.label || id
 const resultColumns = computed(() => projection.value.columns.map((id) => available.value.find((column) => column.id === id)).filter(Boolean))
+const tableWidthKey = 'warehouse.reconciliation.results'
+const { widths: columnWidths, load: loadColumnWidths, headerDragEnd } = useTableWidths()
+function onHeaderDragEnd(newWidth, oldWidth, column) {
+  headerDragEnd(tableWidthKey, newWidth, oldWidth, column)
+}
 function columnWidth(column) {
   if (column.kind === 'metric') return column.id === 'baseQuantity' ? 150 : 125
   if (['deliveryDay', 'deliveryMonth', 'createdAt', 'reviewedAt'].includes(column.id)) return 155
@@ -266,7 +277,7 @@ function currentFilters() {
   const [reviewedFrom, reviewedTo] = dateRange(filters.reviewedRange)
   return Object.fromEntries(Object.entries({ deliveredFrom, deliveredTo, reviewedFrom, reviewedTo, brandId: filters.brandId || undefined, categoryId: filters.categoryId || undefined, department: filters.department.trim() || undefined, number: filters.number.trim() || undefined, materialKeyword: filters.materialKeyword.trim() || undefined }).filter(([, value]) => value !== undefined))
 }
-const pendingChanges = computed(() => lastQuery.value && (JSON.stringify(columns.value) !== JSON.stringify(lastQuery.value.columns) || JSON.stringify(currentFilters()) !== JSON.stringify(lastQuery.value.filters)))
+const pendingChanges = computed(() => lastQuery.value && (JSON.stringify(columns.value) !== JSON.stringify(lastQuery.value.columns) || JSON.stringify(currentFilters()) !== JSON.stringify(lastQuery.value.filters) || sortBy.value !== lastQuery.value.sortBy || sortOrder.value !== lastQuery.value.sortOrder))
 const resultFilterDescription = computed(() => {
   const f = lastQuery.value?.filters || {}
   const parts = ['当前结果：已审核快照']
@@ -287,6 +298,12 @@ function moveColumn(index, offset) {
   ;[next[index], next[index + offset]] = [next[index + offset], next[index]]
   columns.value = next
 }
+function changeReportSort({ prop, order }) {
+  sortBy.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  page.value = 1
+  search()
+}
 function useDefaultColumns() { columns.value = defaults.filter((id) => available.value.some((column) => column.id === id)) }
 async function executeQuery(request) {
   const sequence = ++requestSequence
@@ -296,7 +313,12 @@ async function executeQuery(request) {
     const result = await queryReport(request)
     if (sequence !== requestSequence) return
     projection.value = result
-    lastQuery.value = { filters: { ...request.filters }, columns: [...request.columns] }
+    lastQuery.value = {
+      filters: { ...request.filters },
+      columns: [...request.columns],
+      sortBy: request.sortBy || '',
+      sortOrder: request.sortOrder || ''
+    }
     page.value = result.page
     pageSize.value = result.pageSize
   } catch (error) {
@@ -305,12 +327,14 @@ async function executeQuery(request) {
 }
 async function search() {
   if (!columns.value.length) { ElMessage.warning('至少选择一列'); return }
-  await executeQuery({ filters: currentFilters(), columns: [...columns.value], page: 1, pageSize: pageSize.value })
+  const sort = sortBy.value ? { sortBy: sortBy.value, sortOrder: sortOrder.value } : {}
+  await executeQuery({ filters: currentFilters(), columns: [...columns.value], page: 1, pageSize: pageSize.value, ...sort })
 }
 async function reset() { Object.assign(filters, blankFilters()); await search() }
 async function loadPage() {
   if (!lastQuery.value) return
-  await executeQuery({ filters: { ...lastQuery.value.filters }, columns: [...lastQuery.value.columns], page: page.value, pageSize: pageSize.value })
+  const sort = lastQuery.value.sortBy ? { sortBy: lastQuery.value.sortBy, sortOrder: lastQuery.value.sortOrder } : {}
+  await executeQuery({ filters: { ...lastQuery.value.filters }, columns: [...lastQuery.value.columns], page: page.value, pageSize: pageSize.value, ...sort })
 }
 async function changePageSize() { page.value = 1; await loadPage() }
 async function downloadExcel() {
@@ -405,7 +429,8 @@ onMounted(async () => {
   await Promise.all([
     loadReportColumns().then((data) => { available.value = data; useDefaultColumns() }).catch(showError),
     loadReportOptions().then((data) => { options.value = data }).catch(showError),
-    refreshSchemes()
+    refreshSchemes(),
+    loadColumnWidths(tableWidthKey)
   ])
   if (available.value.length) await search()
 })
@@ -478,6 +503,9 @@ onBeforeUnmount(() => { requestSequence++; finishPrint(); window.removeEventList
 }
 @media (max-width: 680px) {
   .report-filters { grid-template-columns: minmax(0, 1fr); }
+  .report-filters :deep(.el-form-item) { flex-direction: column; align-items: stretch; }
+  .report-filters :deep(.el-form-item__label) { width: 100% !important; height: auto; justify-content: flex-start; padding: 0 0 4px; line-height: 20px; }
+  .report-filters :deep(.el-form-item__content) { width: 100%; margin-left: 0 !important; }
   .report-heading, .results-heading, .filter-actions { align-items: flex-start; flex-direction: column; }
   .heading-actions { justify-content: flex-start; }
   .results-meta { justify-items: start; }

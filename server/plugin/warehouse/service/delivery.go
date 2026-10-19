@@ -237,7 +237,15 @@ func (s *DeliveryService) List(ctx context.Context, query req.DeliveryListQuery)
 	if err := db.Count(&result.Total).Error; err != nil {
 		return result, err
 	}
-	err := db.Order("delivered_at desc, id desc").Offset((query.Page - 1) * query.PageSize).Limit(query.PageSize).Find(&result.List).Error
+	order := "delivered_at DESC, id DESC"
+	if query.SortBy != "" || query.SortOrder != "" {
+		var err error
+		order, err = resolveMasterOrder(query.SortQuery, deliverySortColumns())
+		if err != nil {
+			return result, err
+		}
+	}
+	err := db.Order(order).Offset((query.Page - 1) * query.PageSize).Limit(query.PageSize).Find(&result.List).Error
 	return result, err
 }
 

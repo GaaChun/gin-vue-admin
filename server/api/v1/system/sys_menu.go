@@ -7,6 +7,7 @@ import (
 	"github.com/flipped-aurora/gin-vue-admin/server/model/system"
 	systemReq "github.com/flipped-aurora/gin-vue-admin/server/model/system/request"
 	systemRes "github.com/flipped-aurora/gin-vue-admin/server/model/system/response"
+	systemService "github.com/flipped-aurora/gin-vue-admin/server/service/system"
 	"github.com/flipped-aurora/gin-vue-admin/server/utils"
 
 	"github.com/gin-gonic/gin"
@@ -332,4 +333,32 @@ func (a *AuthorityMenuApi) GetMenuList(c *gin.Context) {
 		return
 	}
 	response.OkWithDetailed(menuList, "获取成功", c)
+}
+
+// RecordMenuVisit increments the signed-in user's visit count for an authorized menu.
+func (a *AuthorityMenuApi) RecordMenuVisit(c *gin.Context) {
+	var req struct {
+		MenuID uint `json:"menuId" binding:"required,gt=0"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.FailWithMessage(err.Error(), c)
+		return
+	}
+	err := systemService.UserMenuVisitServiceApp.Record(utils.GetUserID(c), utils.GetUserAuthorityId(c), req.MenuID)
+	if err != nil {
+		response.FailWithMessage(err.Error(), c)
+		return
+	}
+	response.OkWithMessage("记录成功", c)
+}
+
+// GetRecentMenuVisits returns recent menu access for the signed-in user.
+func (a *AuthorityMenuApi) GetRecentMenuVisits(c *gin.Context) {
+	items, err := systemService.UserMenuVisitServiceApp.List(utils.GetUserID(c), utils.GetUserAuthorityId(c))
+	if err != nil {
+		global.GVA_LOG.Error("读取最近访问失败", zap.Error(err))
+		response.FailWithMessage("读取最近访问失败", c)
+		return
+	}
+	response.OkWithDetailed(items, "获取成功", c)
 }

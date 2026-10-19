@@ -126,12 +126,66 @@ func BuildProjection(lines []ReconciliationLine, query req.ReconciliationQuery, 
 	for _, key := range order {
 		rows = append(rows, groups[key].row(columns))
 	}
+	sortErr := sortReportRows(rows, columns, query.SortBy, query.SortOrder)
+	if sortErr != nil {
+		return ReportProjection{}, sortErr
+	}
 	page := query.PageQuery.WithDefaults()
 	result := ReportProjection{List: rows, Page: page.Page, PageSize: page.PageSize, Total: int64(len(rows)), Columns: columnIDs(columns), Summary: summary(matched, columns), Warnings: []string{"仅统计未删除且已审核送货单的历史快照", "导出、打印按执行时数据重新生成完整结果"}}
 	if paginate {
 		result.List = pageRows(rows, page.Page, page.PageSize)
 	}
 	return result, nil
+}
+
+func sortReportRows(rows []ReportRow, columns []ReportColumn, sortBy, sortOrder string) error {
+	if sortBy == "" {
+		if sortOrder != "" {
+			return domainError(ValidationFailed, "排序字段不能为空", "sortBy")
+		}
+		return nil
+	}
+	var selected *ReportColumn
+	for i := range columns {
+		if columns[i].ID == sortBy {
+			selected = &columns[i]
+			break
+		}
+	}
+	if selected == nil {
+		return domainError(ValidationFailed, "排序字段必须是当前显示列", "sortBy")
+	}
+	order := strings.ToLower(sortOrder)
+	if order != "asc" && order != "desc" && order != "ascending" && order != "descending" {
+		return domainError(ValidationFailed, "排序方向无效", "sortOrder")
+	}
+	descending := order == "desc" || order == "descending"
+	sort.SliceStable(rows, func(i, j int) bool {
+		left, right := rows[i].Values[sortBy], rows[j].Values[sortBy]
+		if left == nil || right == nil {
+			if left == nil && right == nil {
+				return false
+			}
+			return left != nil
+		}
+		comparison := 0
+		if selected.DataType == "decimal" {
+			leftValue, leftErr := decimal.NewFromString(*left)
+			rightValue, rightErr := decimal.NewFromString(*right)
+			if leftErr == nil && rightErr == nil {
+				comparison = leftValue.Cmp(rightValue)
+			} else {
+				comparison = strings.Compare(strings.ToLower(*left), strings.ToLower(*right))
+			}
+		} else {
+			comparison = strings.Compare(strings.ToLower(*left), strings.ToLower(*right))
+		}
+		if descending {
+			return comparison > 0
+		}
+		return comparison < 0
+	})
+	return nil
 }
 
 type reportGroup struct {

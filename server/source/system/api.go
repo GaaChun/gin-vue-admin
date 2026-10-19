@@ -103,6 +103,8 @@ func (i *initApi) InitializeData(ctx context.Context) (context.Context, error) {
 		{ApiGroup: "菜单", Method: "POST", Path: "/menu/getMenuAuthority", Description: "获取指定角色menu"},
 		{ApiGroup: "菜单", Method: "POST", Path: "/menu/addMenuAuthority", Description: "增加menu和角色关联关系"},
 		{ApiGroup: "菜单", Method: "GET", Path: "/menu/getMenuRoles", Description: "获取菜单关联角色列表"},
+		{ApiGroup: "菜单", Method: "POST", Path: "/menu/recentVisits", Description: "获取当前用户最近访问"},
+		{ApiGroup: "菜单", Method: "POST", Path: "/menu/recordVisit", Description: "记录当前用户菜单访问"},
 		{ApiGroup: "菜单", Method: "POST", Path: "/menu/setMenuRoles", Description: "全量覆盖菜单关联角色列表"},
 
 		{ApiGroup: "分片上传", Method: "GET", Path: "/fileUploadAndDownload/findFile", Description: "寻找目标文件（秒传）"},

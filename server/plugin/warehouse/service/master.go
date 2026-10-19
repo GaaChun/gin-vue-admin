@@ -385,9 +385,15 @@ func (s *MasterService) ListUnits(ctx context.Context, q req.UnitListQuery) (res
 	if q.Name != "" {
 		db = db.Where("name LIKE ?", "%"+strings.TrimSpace(q.Name)+"%")
 	}
+	orderColumns := auditSortColumns("wh_units")
+	orderColumns["name"] = "wh_units.name"
+	order, err := resolveMasterOrder(q.SortQuery, orderColumns)
+	if err != nil {
+		return r, err
+	}
 	e := db.Count(&r.Total).Error
 	if e == nil {
-		e = db.Order("id DESC").Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&r.List).Error
+		e = db.Order(order).Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&r.List).Error
 	}
 	r.Page = q.Page
 	r.PageSize = q.PageSize
@@ -400,9 +406,17 @@ func (s *MasterService) ListBrands(ctx context.Context, q req.BrandListQuery) (r
 	if q.Keyword != "" {
 		db = db.Where("name LIKE ? OR code LIKE ? OR mnemonic LIKE ?", "%"+q.Keyword+"%", "%"+q.Keyword+"%", "%"+q.Keyword+"%")
 	}
+	orderColumns := auditSortColumns("wh_brands")
+	for _, field := range []string{"name", "code", "mnemonic"} {
+		orderColumns[field] = "wh_brands." + field
+	}
+	order, err := resolveMasterOrder(q.SortQuery, orderColumns)
+	if err != nil {
+		return r, err
+	}
 	e := db.Count(&r.Total).Error
 	if e == nil {
-		e = db.Order("id DESC").Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&r.List).Error
+		e = db.Order(order).Offset((q.Page - 1) * q.PageSize).Limit(q.PageSize).Find(&r.List).Error
 	}
 	r.Page = q.Page
 	r.PageSize = q.PageSize

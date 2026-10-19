@@ -87,6 +87,23 @@ func TestReconciliationSummaryTotalsIgnorePagination(t *testing.T) {
 	}
 }
 
+func TestReconciliationSortsAllGroupsBeforePagination(t *testing.T) {
+	result, err := BuildProjection(sampleLines(), req.ReconciliationQuery{
+		Columns:   []string{"unit", "amount"},
+		PageQuery: req.PageQuery{Page: 2, PageSize: 1},
+		SortQuery: req.SortQuery{SortBy: "amount", SortOrder: "descending"},
+	}, true)
+	if err != nil || result.Total != 2 || len(result.List) != 1 || value(result.List[0], "amount") != "8.50" {
+		t.Fatalf("expected second page of descending all-group sort, got %#v, err %v", result, err)
+	}
+	if _, err := BuildProjection(sampleLines(), req.ReconciliationQuery{
+		Columns:   []string{"unit", "amount"},
+		SortQuery: req.SortQuery{SortBy: "quantity", SortOrder: "asc"},
+	}, true); err == nil {
+		t.Fatal("sort field outside visible columns was accepted")
+	}
+}
+
 func sampleLines() []ReconciliationLine {
 	return []ReconciliationLine{
 		line("箱", 2, "2", "30", "60.00", "24"),

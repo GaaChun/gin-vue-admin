@@ -25,6 +25,7 @@ vi.mock('element-plus', () => ({
 }))
 vi.mock('../api/common', () => ({
   idOf: value => value?.id,
+  pageSequenceNumber: (index, page, pageSize) => (page - 1) * pageSize + index + 1,
   showError: mocks.showError
 }))
 vi.mock('../api/reconciliation', () => ({
@@ -40,6 +41,7 @@ vi.mock('../api/reconciliation', () => ({
   deleteReportScheme: mocks.deleteReportScheme,
   publishReportScheme: mocks.publishReportScheme
 }))
+vi.mock('../api/table-widths', () => ({ getTableWidths: vi.fn(async () => ({})), saveTableWidths: vi.fn(async () => ({})) }))
 
 import Reconciliation from './reconciliation.vue'
 

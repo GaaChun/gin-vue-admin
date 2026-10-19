@@ -19,23 +19,26 @@
         <el-button type="warning" :disabled="!selectedReviewed.length || actionLoading" :loading="batchLoading === 'unreview'" @click="batchTransition('unreview')">批量反审核</el-button>
       </div>
       <el-alert v-if="listError" :title="listError" type="error" show-icon :closable="false" />
-      <el-table ref="listTable" v-loading="listLoading" :data="notes" :row-key="idOf" border @selection-change="selectionChanged" @row-dblclick="openExisting($event)">
-        <el-table-column type="selection" width="48" :selectable="selectableNote" />
-        <el-table-column prop="number" label="单号" min-width="160" />
-        <el-table-column label="送货日期" min-width="130"><template #default="{ row }">{{ displayDate(row.deliveredAt) }}</template></el-table-column>
-        <el-table-column prop="brandNameSnapshot" label="客户" min-width="130" />
-        <el-table-column prop="department" label="部门" min-width="120" />
-        <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="row.status === 'reviewed' ? 'success' : 'info'">{{ row.status === 'reviewed' ? '已审核' : '未审核' }}</el-tag></template></el-table-column>
-        <el-table-column prop="totalAmount" label="金额" min-width="130" align="right" />
-        <el-table-column prop="createdByNameSnapshot" label="创建人" min-width="110" />
-        <el-table-column label="创建时间" min-width="180"><template #default="{ row }">{{ displayTime(row.CreatedAt ?? row.createdAt) }}</template></el-table-column>
-        <el-table-column prop="reviewedByNameSnapshot" label="审核人" min-width="110" />
-        <el-table-column label="审核时间" min-width="180"><template #default="{ row }">{{ displayTime(row.reviewedAt) }}</template></el-table-column>
-        <el-table-column label="操作" fixed="right" width="235"><template #default="{ row }">
-          <el-button link type="primary" :disabled="editorLoading || actionLoading" @click="openExisting(row)">{{ row.status === 'reviewed' ? '查看' : '编辑' }}</el-button>
-          <el-button v-if="row.status === 'draft'" link type="success" :disabled="actionLoading" @click="transition(row, 'review')">审核</el-button>
-          <el-button v-else link type="warning" :disabled="actionLoading" @click="transition(row, 'unreview')">反审核</el-button>
-          <el-button v-if="row.status === 'draft'" link type="danger" :disabled="actionLoading" @click="transition(row, 'delete')">删除</el-button>
+      <el-table ref="listTable" v-loading="listLoading" :data="notes" :row-key="idOf" border size="small" :default-sort="{ prop: 'deliveredAt', order: 'descending' }" @sort-change="changeSort" @header-dragend="onHeaderDragEnd" @selection-change="selectionChanged" @row-dblclick="openExisting($event)">
+        <el-table-column type="selection" column-key="__selection" :width="columnWidths.__selection || 48" :selectable="selectableNote" />
+        <el-table-column type="index" column-key="__index" label="序号" :width="columnWidths.__index || 65" align="center" :index="pageIndex" />
+        <el-table-column prop="number" label="单号" :width="columnWidths.number" min-width="160" sortable="custom" />
+        <el-table-column prop="deliveredAt" label="送货日期" column-key="deliveredAt" :width="columnWidths.deliveredAt" min-width="130" sortable="custom"><template #default="{ row }">{{ displayDate(row.deliveredAt) }}</template></el-table-column>
+        <el-table-column prop="brandNameSnapshot" label="客户" :width="columnWidths.brandNameSnapshot" min-width="130" sortable="custom" />
+        <el-table-column prop="department" label="部门" :width="columnWidths.department" min-width="120" sortable="custom" />
+        <el-table-column prop="status" label="状态" :width="columnWidths.status || 90" sortable="custom"><template #default="{ row }"><el-tag :type="row.status === 'reviewed' ? 'success' : 'info'">{{ row.status === 'reviewed' ? '已审核' : '未审核' }}</el-tag></template></el-table-column>
+        <el-table-column prop="totalAmount" label="金额" :width="columnWidths.totalAmount" min-width="130" align="right" sortable="custom" />
+        <el-table-column prop="createdByNameSnapshot" label="创建人" :width="columnWidths.createdByNameSnapshot" min-width="110" sortable="custom" />
+        <el-table-column prop="createdAt" label="创建时间" column-key="createdAt" :width="columnWidths.createdAt" min-width="180" sortable="custom"><template #default="{ row }">{{ displayTime(row.CreatedAt ?? row.createdAt) }}</template></el-table-column>
+        <el-table-column prop="reviewedByNameSnapshot" label="审核人" :width="columnWidths.reviewedByNameSnapshot" min-width="110" sortable="custom" />
+        <el-table-column prop="reviewedAt" label="审核时间" column-key="reviewedAt" :width="columnWidths.reviewedAt" min-width="180" sortable="custom"><template #default="{ row }">{{ displayTime(row.reviewedAt) }}</template></el-table-column>
+        <el-table-column column-key="__actions" label="操作" fixed="right" :width="columnWidths.__actions || 150"><template #default="{ row }">
+          <div class="delivery-row-actions">
+            <el-button link size="small" type="primary" :disabled="editorLoading || actionLoading" @click="openExisting(row)">{{ row.status === 'reviewed' ? '查看' : '编辑' }}</el-button>
+            <el-button v-if="row.status === 'draft'" link size="small" type="success" :disabled="actionLoading" @click="transition(row, 'review')">审核</el-button>
+            <el-button v-else link size="small" type="warning" :disabled="actionLoading" @click="transition(row, 'unreview')">反审核</el-button>
+            <el-button v-if="row.status === 'draft'" link size="small" type="danger" :disabled="actionLoading" @click="transition(row, 'delete')">删除</el-button>
+          </div>
         </template></el-table-column>
       </el-table>
       <div class="gva-pagination"><el-pagination v-model:current-page="page" v-model:page-size="pageSize" :page-sizes="[20, 50, 100]" :total="total" layout="total, sizes, prev, pager, next, jumper" @current-change="loadList" @size-change="search" /></div>
@@ -80,9 +83,9 @@
           <el-button :disabled="!canEdit || !optionsReady" @click="openQuickMaterialCreate">新建物料并添加</el-button>
           <span class="editor-hint">数量最多4位小数且大于0，单价最多4位小数且不小于0；Enter / Tab 前进，Shift+Tab 返回。</span>
         </div>
-        <el-table :data="rows" row-key="rowKey" border class="detail-table" show-summary :summary-method="tableSummary">
+        <el-table :data="displayRows" row-key="rowKey" border size="small" class="detail-table" show-summary :summary-method="tableSummary" @sort-change="changeDetailSort">
           <el-table-column type="index" label="行" width="50" />
-          <el-table-column label="物料编号 / 选择" min-width="240"><template #default="{ row }">
+          <el-table-column prop="materialCode" label="物料编号 / 选择" min-width="240" sortable="custom"><template #default="{ row }">
             <span v-if="readonly">{{ row.materialCode }}</span>
             <el-select v-else :ref="(element) => setCellRef(row, 'material', element)" :model-value="row.materialId" filterable :filter-method="(value) => row.keyword = value" :loading="row.loading" :disabled="!canEdit" placeholder="编号 / 名称 / 助记符" @change="(value) => selectMaterial(row, value)" @visible-change="(open) => row.materialOpen = open" @keydown="cellKeydown($event, row, 'material')">
               <el-option v-if="row.materialId && !inlineMaterials(row).some((item) => idOf(item) === row.materialId)" :value="row.materialId" :label="`${row.materialCode} ${row.materialName}`" disabled />
@@ -90,26 +93,26 @@
             </el-select>
             <div v-if="row.errors.materialId" class="cell-error">{{ row.errors.materialId }}</div>
           </template></el-table-column>
-          <el-table-column prop="materialName" label="物料名称（只读）" min-width="170" />
-          <el-table-column prop="specification" label="规格（只读）" min-width="150" />
-          <el-table-column label="单位" min-width="170"><template #default="{ row }">
+          <el-table-column prop="materialName" label="物料名称（只读）" min-width="170" sortable="custom" />
+          <el-table-column prop="specification" label="规格（只读）" min-width="150" sortable="custom" />
+          <el-table-column prop="unitName" label="单位" min-width="170" sortable="custom"><template #default="{ row }">
             <span v-if="readonly">{{ row.unitName }}</span>
             <el-select v-else :ref="(element) => setCellRef(row, 'unit', element)" :model-value="row.materialUnitId" :disabled="!canEdit || !row.materialId || row.loading" @change="(value) => selectUnit(row, value)" @visible-change="(open) => row.unitOpen = open" @keydown="cellKeydown($event, row, 'unit')">
               <el-option v-for="binding in row.units" :key="idOf(binding)" :value="idOf(binding)" :label="bindingLabel(binding)" :disabled="!binding.enabled" />
             </el-select>
             <div v-if="row.errors.materialUnitId" class="cell-error">{{ row.errors.materialUnitId }}</div>
           </template></el-table-column>
-          <el-table-column label="数量" min-width="165"><template #default="{ row }">
+          <el-table-column prop="quantity" label="数量" min-width="165" sortable="custom"><template #default="{ row }">
             <span v-if="readonly">{{ row.quantity }}</span>
             <el-input v-else :ref="(element) => setCellRef(row, 'quantity', element)" v-model="row.quantity" :disabled="!canEdit" inputmode="decimal" @input="clearFieldError(row, 'quantity')" @compositionstart="row.composing = true" @compositionend="row.composing = false" @keydown="cellKeydown($event, row, 'quantity')" />
             <div v-if="row.errors.quantity" class="cell-error">{{ row.errors.quantity }}</div>
           </template></el-table-column>
-          <el-table-column label="单价" min-width="165"><template #default="{ row }">
+          <el-table-column prop="unitPrice" label="单价" min-width="165" sortable="custom"><template #default="{ row }">
             <span v-if="readonly">{{ row.unitPrice }}</span>
             <el-input v-else :ref="(element) => setCellRef(row, 'unitPrice', element)" v-model="row.unitPrice" :disabled="!canEdit" inputmode="decimal" @input="clearFieldError(row, 'unitPrice')" @compositionstart="row.composing = true" @compositionend="row.composing = false" @keydown="cellKeydown($event, row, 'unitPrice')" />
             <div v-if="row.errors.unitPrice" class="cell-error">{{ row.errors.unitPrice }}</div>
           </template></el-table-column>
-          <el-table-column prop="amount" label="金额" min-width="130" align="right"><template #default="{ row }">{{ row.amount ?? '保存后计算' }}</template></el-table-column>
+          <el-table-column prop="amount" label="金额" min-width="130" align="right" sortable="custom"><template #default="{ row }">{{ row.amount ?? '保存后计算' }}</template></el-table-column>
           <el-table-column v-if="!readonly" label="操作" width="80" fixed="right"><template #default="{ row }"><el-button link type="danger" :disabled="!canEdit" @click="removeRow(row)">移除</el-button></template></el-table-column>
         </el-table>
         <p class="editor-hint">金额以服务端保存计算为准，不使用浮点数预估。完全空白的尾行不会提交，部分填写的行必须补齐。</p>
@@ -151,8 +154,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import DeliveryMaterialPicker from '../components/delivery-material-picker.vue'
 import { getUserList } from '@/api/user'
-import { allOptions, idOf, request, showError } from '../api/common'
+import { allOptions, idOf, pageSequenceNumber, request, showError } from '../api/common'
 import { saveMaster } from '../api/master'
+import { useTableWidths } from '../use-table-widths'
 
 defineOptions({ name: 'WarehouseDelivery' })
 const base = '/warehouse/delivery'
@@ -171,8 +175,13 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const filters = reactive({ number: '', dates: [], brandId: undefined, status: '', department: '' })
+const tableWidthKey = 'warehouse.delivery.list'
+const { widths: columnWidths, load: loadColumnWidths, headerDragEnd } = useTableWidths()
+const sortBy = ref('')
+const sortOrder = ref('')
 const usersById = ref(new Map())
 const listTable = ref()
+function pageIndex(index) { return pageSequenceNumber(index, page.value, pageSize.value) }
 const selectedNotes = ref([])
 const batchLoading = ref('')
 const selectedDrafts = computed(() => selectedNotes.value.filter((row) => row.status === 'draft'))
@@ -227,6 +236,25 @@ const savedSignature = ref('')
 const cellRefs = new Map()
 let nextRowKey = 0
 let listSequence = 0
+const detailSortBy = ref('')
+const detailSortOrder = ref('')
+const displayRows = computed(() => {
+  if (!detailSortBy.value || !detailSortOrder.value) return rows.value
+  const direction = detailSortOrder.value === 'asc' ? 1 : -1
+  return rows.value.map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      const left = a.row[detailSortBy.value]
+      const right = b.row[detailSortBy.value]
+      const leftMissing = left == null || left === ''
+      const rightMissing = right == null || right === ''
+      if (leftMissing || rightMissing) {
+        if (leftMissing !== rightMissing) return leftMissing ? 1 : -1
+        return a.index - b.index
+      }
+      return compareDetailValues(left, right) * direction || a.index - b.index
+    })
+    .map(({ row }) => row)
+})
 const readonly = computed(() => note.value.status === 'reviewed')
 const canEdit = computed(() => !readonly.value && !saving.value && !actionLoading.value && !editorLoading.value && !rowsLoading.value)
 const editorTitle = computed(() => `${idOf(note.value) ? (readonly.value ? '查看' : '编辑') : '新建'}送货单`)
@@ -348,6 +376,36 @@ const lineCategoryIds = computed(() => {
   }
   return ids
 })
+function changeDetailSort({ prop, order }) {
+  detailSortBy.value = order ? prop : ''
+  detailSortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+}
+function decimalSortValue(value) {
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(String(value).trim())
+  if (!match) return null
+  const integer = match[2].replace(/^0+/, '') || '0'
+  const fraction = (match[3] || '').replace(/0+$/, '')
+  return { negative: match[1] === '-' && (integer !== '0' || fraction !== ''), integer, fraction }
+}
+function compareDecimalSortValues(left, right) {
+  if (left.negative !== right.negative) return left.negative ? -1 : 1
+  let order = left.integer.length === right.integer.length
+    ? left.integer < right.integer ? -1 : left.integer > right.integer ? 1 : 0
+    : left.integer.length < right.integer.length ? -1 : 1
+  if (!order) {
+    const scale = Math.max(left.fraction.length, right.fraction.length)
+    const a = left.fraction.padEnd(scale, '0')
+    const b = right.fraction.padEnd(scale, '0')
+    order = a < b ? -1 : a > b ? 1 : 0
+  }
+  return left.negative ? -order : order
+}
+function compareDetailValues(left, right) {
+  const leftDecimal = decimalSortValue(left)
+  const rightDecimal = decimalSortValue(right)
+  if (leftDecimal && rightDecimal) return compareDecimalSortValues(leftDecimal, rightDecimal)
+  return String(left).localeCompare(String(right), 'zh-CN', { numeric: true, sensitivity: 'base' })
+}
 function tableSummary({ columns }) {
   return columns.map((column, index) => {
     if (index === 0) return '合计'
@@ -388,11 +446,20 @@ async function loadOptions() {
     optionsReady.value = true
   } catch (error) { showError(error) } finally { optionsLoading.value = false }
 }
+function changeSort({ prop, order }) {
+  sortBy.value = order ? prop : ''
+  sortOrder.value = order === 'ascending' ? 'asc' : order === 'descending' ? 'desc' : ''
+  page.value = 1
+  loadList()
+}
+function onHeaderDragEnd(newWidth, oldWidth, column) {
+  headerDragEnd(tableWidthKey, newWidth, oldWidth, column)
+}
 async function loadList() {
   const sequence = ++listSequence
   listLoading.value = true
   listError.value = ''
-  const params = { page: page.value, pageSize: pageSize.value, number: filters.number.trim() || undefined, brandId: filters.brandId || undefined, status: filters.status || undefined, department: filters.department.trim() || undefined }
+  const params = { page: page.value, pageSize: pageSize.value, number: filters.number.trim() || undefined, brandId: filters.brandId || undefined, status: filters.status || undefined, department: filters.department.trim() || undefined, ...(sortBy.value ? { sortBy: sortBy.value, sortOrder: sortOrder.value } : {}) }
   if (filters.dates?.length === 2) {
     params.deliveredFrom = `${filters.dates[0]}T00:00:00+08:00`
     params.deliveredTo = new Date(new Date(`${filters.dates[1]}T00:00:00+08:00`).getTime() + 86400000).toISOString()
@@ -581,10 +648,11 @@ function cellKeydown(event, row, field) {
   if ((field === 'material' && row.materialOpen) || (field === 'unit' && row.unitOpen)) return
   const fields = ['material', 'unit', 'quantity', 'unitPrice']
   const index = fields.indexOf(field)
-  const rowIndex = rows.value.findIndex((item) => item.rowKey === row.rowKey)
+  const orderedRows = displayRows.value
+  const rowIndex = orderedRows.findIndex((item) => item.rowKey === row.rowKey)
   if (event.shiftKey) {
     if (event.key !== 'Tab') return
-    const target = index > 0 ? row : rows.value[rowIndex - 1]
+    const target = index > 0 ? row : orderedRows[rowIndex - 1]
     if (!target) return
     event.preventDefault(); focusCell(target, fields[index > 0 ? index - 1 : 3]); return
   }
@@ -596,7 +664,7 @@ function cellKeydown(event, row, field) {
   event.preventDefault()
   if (index < fields.length - 1) focusCell(row, fields[index + 1])
   else {
-    let target = rows.value[rowIndex + 1]
+    let target = orderedRows[rowIndex + 1]
     if (!target) { target = emptyRow(); rows.value.push(target) }
     focusCell(target, 'material')
   }
@@ -685,7 +753,7 @@ async function transition(row, action) {
 }
 watch([form, rows, reservation], persistCreateDraft, { deep: true })
 onBeforeUnmount(persistCreateDraft)
-onMounted(() => { loadList(); loadOptions(); loadDepartments(); loadUsers() })
+onMounted(() => { loadList(); loadOptions(); loadDepartments(); loadUsers(); loadColumnWidths(tableWidthKey) })
 watch(() => [route.query.whDelivery, route.query.whId, route.query.whNew], async ([detail, id, isNew]) => {
   if (detail !== '1' || (!id && isNew !== '1')) {
     editorOpen.value = false
@@ -707,5 +775,7 @@ watch(() => [route.query.whDelivery, route.query.whId, route.query.whNew], async
 .cell-error { color: var(--el-color-danger); font-size: 12px; line-height: 1.5; margin-top: 4px; }
 .option-spec { margin-left: 12px; color: var(--el-text-color-secondary); }
 .detail-table :deep(.el-select) { width: 100%; }
+.delivery-row-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.delivery-row-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .delivery-editor > .el-alert { margin-bottom: 12px; }
 </style>

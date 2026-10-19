@@ -9,7 +9,8 @@
     "limit-build": "npm install increase-memory-limit-fixbug cross-env -g && npm run fix-memory-limit && node ./limit && npm run build",
     "preview": "vite preview --host --mode development",
     "fix-memory-limit": "cross-env LIMIT=4096 increase-memory-limit",
-    "test:warehouse": "vitest run --config vitest.warehouse.config.js"
+    "test:warehouse": "vitest run --config vitest.warehouse.config.js",
+    "test:dashboard": "vitest run --config vitest.dashboard.config.js"
   },
   "type": "module",
   "dependencies": {

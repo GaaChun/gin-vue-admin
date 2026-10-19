@@ -7,6 +7,19 @@
     </header>
 
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="mb-4" />
+    <section class="mb-6">
+      <h2 class="mb-3 text-base font-semibold text-slate-900 dark:text-white">最近访问</h2>
+      <div v-if="recentVisits.length" class="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        <button
+          v-for="item in recentVisits"
+          :key="item.id"
+          type="button"
+          class="truncate rounded-lg border border-slate-100 bg-white px-3 py-3 text-left text-sm text-slate-700 hover:border-[var(--el-color-primary)] hover:text-[var(--el-color-primary)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          @click="openRecentMenu(item)"
+        >{{ item.title }}</button>
+      </div>
+      <el-empty v-else :description="recentVisitError || '暂无可访问的菜单'" :image-size="72" />
+    </section>
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <el-card v-for="item in cards" :key="item.key" shadow="hover" class="!rounded-xl">
         <div class="flex items-center justify-between gap-3">
@@ -21,14 +34,21 @@
         </div>
       </el-card>
     </div>
-    <el-empty v-if="!loading && !error && stats.total === 0" description="暂无送货单记录" />
   </main>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useRouterStore } from '@/pinia/modules/router'
 import { CircleCheck, Clock, Document, Calendar } from '@element-plus/icons-vue'
+import { getRecentMenuVisits } from '@/api/menu'
 import { listDeliveryNotes } from '@/plugin/warehouse/api/delivery-dashboard'
+import { defaultMenuEntries, sortRecentVisits } from './recentVisits'
+import { emitter } from '@/utils/bus'
+
+const router = useRouter()
+const routerStore = useRouterStore()
 
 const cards = [
   { key: 'total', label: '送货单总数', caption: '全部状态', icon: Document, color: 'bg-blue-50 text-blue-600 dark:bg-blue-400/10' },
@@ -39,6 +59,48 @@ const cards = [
 const stats = reactive({ total: null, draft: null, reviewed: null, month: null })
 const loading = ref(false)
 const error = ref('')
+const recentVisits = ref([])
+const recentVisitError = ref('')
+
+
+async function loadRecentVisits() {
+  recentVisitError.value = ''
+  const routeMap = routerStore.routeMap
+  try {
+    const res = await getRecentMenuVisits()
+    if (res.code !== 0 || !Array.isArray(res.data)) throw new Error('响应格式无效')
+    const visits = res.data
+      .filter((item) => {
+        const menu = routeMap[item.name]
+        return menu && !menu.hidden
+      })
+      .map((item) => ({
+        id: item.menuId,
+        name: item.name,
+        title: item.title,
+        visitCount: item.visitCount,
+        lastVisitedAt: item.lastVisitedAt
+      }))
+    recentVisits.value = visits.length
+      ? sortRecentVisits(visits)
+      : defaultMenuEntries(routerStore.asyncRouters?.[0]?.children)
+  } catch {
+    recentVisits.value = []
+    recentVisitError.value = '最近访问暂不可用'
+  }
+}
+function openRecentMenu(item) {
+  const query = {}
+  const params = {}
+  routerStore.routeMap[item.name]?.parameters?.forEach((parameter) => {
+    if (parameter.type === 'query') {
+      query[parameter.key] = parameter.value
+    } else {
+      params[parameter.key] = parameter.value
+    }
+  })
+  router.push({ name: item.name, query, params })
+}
 
 async function loadStats() {
   loading.value = true
@@ -67,6 +129,15 @@ async function loadStats() {
   }
 }
 
-onMounted(loadStats)
+function refreshRecentVisits() {
+  loadRecentVisits()
+}
+
+onMounted(() => {
+  emitter.on('recent-visits-updated', refreshRecentVisits)
+  loadStats()
+  loadRecentVisits()
+})
+onBeforeUnmount(() => emitter.off('recent-visits-updated', refreshRecentVisits))
 defineOptions({ name: 'Dashboard' })
 </script>

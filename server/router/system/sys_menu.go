@@ -23,7 +23,14 @@ func (s *MenuRouter) InitMenuRouter(Router *gin.RouterGroup) (R gin.IRoutes) {
 		menuRouterWithoutRecord.POST("getBaseMenuTree", authorityMenuApi.GetBaseMenuTree)   // 获取用户动态路由
 		menuRouterWithoutRecord.POST("getMenuAuthority", authorityMenuApi.GetMenuAuthority) // 获取指定角色menu
 		menuRouterWithoutRecord.POST("getBaseMenuById", authorityMenuApi.GetBaseMenuById)   // 根据id获取菜单
-		menuRouterWithoutRecord.GET("getMenuRoles", authorityMenuApi.GetMenuRoles)          // 获取菜单关联角色ID列表
+		menuRouterWithoutRecord.GET("getMenuRoles", authorityMenuApi.GetMenuRoles)          // 获取菜单关联角色列表
 	}
 	return menuRouter
+}
+
+// InitRecentMenuRouter protects per-user access history with JWT authentication.
+func (s *MenuRouter) InitRecentMenuRouter(Router *gin.RouterGroup) {
+	menuRouter := Router.Group("menu").Use(middleware.JWTAuth())
+	menuRouter.POST("recentVisits", authorityMenuApi.GetRecentMenuVisits)
+	menuRouter.POST("recordVisit", authorityMenuApi.RecordMenuVisit)
 }
