@@ -59,6 +59,12 @@ func migrateWarehouseSchema(db *gorm.DB) error {
 	); err != nil {
 		return fmt.Errorf("auto-migrate warehouse tables: %w", err)
 	}
+	for _, table := range warehouseTables() {
+		query := fmt.Sprintf("UPDATE `%s` SET `is_deleted` = (`deleted_at` IS NOT NULL), `deleted_by` = CASE WHEN `deleted_at` IS NULL THEN NULL ELSE COALESCE(`deleted_by`, NULLIF(`updated_by`, 0)) END WHERE `is_deleted` <> (`deleted_at` IS NOT NULL) OR (`deleted_at` IS NULL AND `deleted_by` IS NOT NULL) OR (`deleted_at` IS NOT NULL AND `deleted_by` IS NULL AND `updated_by` <> 0)", table)
+		if err := db.Exec(query).Error; err != nil {
+			return fmt.Errorf("backfill deletion audit fields for %s: %w", table, err)
+		}
+	}
 	for _, column := range warehouseSchemaColumns() {
 		if db.Migrator().HasColumn(column.table, column.name) {
 			continue
@@ -97,6 +103,14 @@ func validateGeneratedColumnSupport(version string) error {
 		return nil
 	}
 	return fmt.Errorf("MySQL %q does not support the required generated columns; require MySQL 5.7+", version)
+}
+func warehouseTables() []string {
+	return []string{
+		"wh_units", "wh_brands", "wh_categories", "wh_materials",
+		"wh_material_units", "wh_material_images", "wh_delivery_notes",
+		"wh_delivery_details", "wh_number_counters", "wh_number_reservations",
+		"wh_report_schemes",
+	}
 }
 
 // Active uniqueness must live in MySQL: concurrent application-side checks cannot serialize writers.

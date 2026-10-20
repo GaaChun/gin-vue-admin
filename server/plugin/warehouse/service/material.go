@@ -135,16 +135,16 @@ func (s *MasterService) DeleteMaterial(ctx context.Context, actor uint, in req.D
 		}
 		// The material and its bindings are one aggregate; public Unit records remain untouched.
 		for i := range bindings {
-			ApplyUpdateAudit(&bindings[i].BusinessModel, actor)
-			if err := tx.Model(&bindings[i]).Select("updated_by", "version").Updates(&bindings[i]).Error; err != nil {
+			ApplyDeleteAudit(&bindings[i].BusinessModel, actor)
+			if err := tx.Model(&bindings[i]).Select("updated_by", "version", "deleted_by", "is_deleted").Updates(&bindings[i]).Error; err != nil {
 				return err
 			}
 			if err := tx.Delete(&bindings[i]).Error; err != nil {
 				return err
 			}
 		}
-		ApplyUpdateAudit(&item.BusinessModel, actor)
-		if err := tx.Model(&item).Select("updated_by", "version").Updates(&item).Error; err != nil {
+		ApplyDeleteAudit(&item.BusinessModel, actor)
+		if err := tx.Model(&item).Select("updated_by", "version", "deleted_by", "is_deleted").Updates(&item).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&item).Error
@@ -173,8 +173,8 @@ func (s *MasterService) ListMaterials(ctx context.Context, q req.MaterialListQue
 	for _, field := range []string{"code", "name", "mnemonic", "specification", "alias"} {
 		orderColumns[field] = "wh_materials." + field
 	}
-	orderColumns["brandName"] = "(SELECT name FROM wh_brands WHERE wh_brands.id = wh_materials.brand_id)"
-	orderColumns["categoryName"] = "(SELECT name FROM wh_categories WHERE wh_categories.id = wh_materials.category_id)"
+	orderColumns["brandName"] = "(SELECT name FROM wh_brands WHERE wh_brands.id = wh_materials.brand_id AND wh_brands.deleted_at IS NULL)"
+	orderColumns["categoryName"] = "(SELECT name FROM wh_categories WHERE wh_categories.id = wh_materials.category_id AND wh_categories.deleted_at IS NULL)"
 	order, err := resolveMasterOrder(q.SortQuery, orderColumns)
 	if err != nil {
 		return result, err
@@ -384,8 +384,8 @@ func (s *MasterService) replaceMaterialUnits(tx *gorm.DB, materialID, actor uint
 		if count > 0 {
 			return NewDomainError(ReferenceInUse, "被送货明细引用的单位绑定不能删除")
 		}
-		ApplyUpdateAudit(&binding.BusinessModel, actor)
-		if err := tx.Model(&binding).Select("updated_by", "version").Updates(&binding).Error; err != nil {
+		ApplyDeleteAudit(&binding.BusinessModel, actor)
+		if err := tx.Model(&binding).Select("updated_by", "version", "deleted_by", "is_deleted").Updates(&binding).Error; err != nil {
 			return err
 		}
 		if err := tx.Delete(&binding).Error; err != nil {

@@ -135,7 +135,7 @@ func (s *DeliveryService) Update(ctx context.Context, actor uint, in req.UpdateD
 			if _, ok := kept[detail.ID]; ok {
 				continue
 			}
-			ApplyUpdateAudit(&detail.BusinessModel, actor)
+			ApplyDeleteAudit(&detail.BusinessModel, actor)
 			if err := tx.Save(&detail).Error; err != nil {
 				return err
 			}
@@ -180,6 +180,11 @@ func (s *DeliveryService) transitionNote(ctx context.Context, actor uint, id req
 			return err
 		}
 		result.BusinessModel = next.Audit
+		if action == DeliveryDelete {
+			deletedBy := actor
+			result.DeletedBy = &deletedBy
+			result.IsDeleted = true
+		}
 		result.Status = string(next.Status)
 		if action == DeliveryReview {
 			result.ReviewedByNameSnapshot = stringPointer(reviewer)
@@ -191,8 +196,18 @@ func (s *DeliveryService) transitionNote(ctx context.Context, actor uint, id req
 			return err
 		}
 		if action == DeliveryDelete {
-			if err := tx.Where("note_id = ?", result.ID).Delete(&model.DeliveryDetail{}).Error; err != nil {
+			var details []model.DeliveryDetail
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("note_id = ?", result.ID).Order("id").Find(&details).Error; err != nil {
 				return err
+			}
+			for i := range details {
+				ApplyDeleteAudit(&details[i].BusinessModel, actor)
+				if err := tx.Save(&details[i]).Error; err != nil {
+					return err
+				}
+				if err := tx.Delete(&details[i]).Error; err != nil {
+					return err
+				}
 			}
 			return tx.Delete(&result).Error
 		}

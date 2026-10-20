@@ -181,8 +181,11 @@ func (s *ReportSchemeService) Delete(ctx context.Context, actor, role uint, in r
 		if err := CheckVersion(item.Version, in.Version); err != nil {
 			return err
 		}
-		ApplyUpdateAudit(&item.BusinessModel, actor)
-		if err := tx.Model(&item).Updates(map[string]interface{}{"updated_by": actor, "version": item.Version}).Error; err != nil {
+		ApplyDeleteAudit(&item.BusinessModel, actor)
+		if err := tx.Model(&item).Updates(map[string]interface{}{
+			"updated_by": item.UpdatedBy, "version": item.Version,
+			"deleted_by": item.DeletedBy, "is_deleted": item.IsDeleted,
+		}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&item).Error

@@ -1,10 +1,32 @@
 package initialize
 
 import (
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/flipped-aurora/gin-vue-admin/server/plugin/warehouse/model"
 )
 
+func TestWarehouseModelsShareDeletionAuditFields(t *testing.T) {
+	models := []interface{}{
+		model.Unit{}, model.Brand{}, model.Category{}, model.Material{},
+		model.MaterialUnit{}, model.MaterialImage{}, model.DeliveryNote{},
+		model.DeliveryDetail{}, model.NumberCounter{}, model.NumberReservation{},
+		model.ReportScheme{},
+	}
+	if len(models) != len(warehouseTables()) {
+		t.Fatalf("warehouse model/table coverage mismatch: models=%d tables=%d", len(models), len(warehouseTables()))
+	}
+	for _, value := range models {
+		typ := reflect.TypeOf(value)
+		for _, name := range []string{"DeletedAt", "DeletedBy", "IsDeleted"} {
+			if _, ok := typ.FieldByName(name); !ok {
+				t.Errorf("%s lacks %s", typ.Name(), name)
+			}
+		}
+	}
+}
 func TestWarehouseDDLUsesNullableGeneratedKeysForActiveUniqueness(t *testing.T) {
 	activeCode := findSchemaColumn(t, "wh_materials", "active_code_key")
 	if !strings.Contains(activeCode.definition, "deleted_at IS NULL") || !strings.Contains(activeCode.definition, "ELSE NULL") {

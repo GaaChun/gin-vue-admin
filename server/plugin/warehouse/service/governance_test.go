@@ -57,6 +57,20 @@ func TestCreateAuditDoesNotTrustDeliveryDTO(t *testing.T) {
 	}
 }
 
+func TestApplyDeleteAuditRecordsDedicatedActorAndFlag(t *testing.T) {
+	record := model.BusinessModel{UpdatedBy: 8, Version: 4}
+	ApplyDeleteAudit(&record, 19)
+	if record.DeletedBy == nil || *record.DeletedBy != 19 {
+		t.Fatalf("deleted_by must record the authorized deleting actor: %#v", record.DeletedBy)
+	}
+	if !record.IsDeleted {
+		t.Fatal("is_deleted must be true after deletion")
+	}
+	if record.UpdatedBy != 19 || record.Version != 5 {
+		t.Fatalf("deletion must also update last editor and increment version: updated_by=%d version=%d", record.UpdatedBy, record.Version)
+	}
+}
+
 func TestPrepareDeliveryCommandPreservesStateOnFailure(t *testing.T) {
 	now := time.Date(2026, 10, 15, 8, 0, 0, 0, time.UTC)
 	current := DeliveryCommandState{

@@ -98,6 +98,7 @@ func PrepareDeliveryCommand(current DeliveryCommandState, requested *uint64, act
 func ApplyCreateAudit(record *model.BusinessModel, actorID uint, now time.Time) {
 	record.CreatedBy, record.UpdatedBy = actorID, actorID
 	record.ReviewedBy, record.ReviewedAt = nil, nil
+	record.DeletedBy, record.IsDeleted = nil, false
 	record.Version = 1
 }
 
@@ -120,6 +121,13 @@ func ClearReviewAudit(record *model.BusinessModel, actorID uint) {
 	ApplyUpdateAudit(record, actorID)
 }
 
+// ApplyDeleteAudit records the deleting actor separately from the last editor.
+func ApplyDeleteAudit(record *model.BusinessModel, actorID uint) {
+	actor := actorID
+	record.DeletedBy = &actor
+	record.IsDeleted = true
+	ApplyUpdateAudit(record, actorID)
+}
 
 // IdentifierReusePolicy distinguishes soft-deletable master identifiers from
 // delivery note numbers, whose historical uniqueness is permanent.
@@ -186,7 +194,7 @@ func ValidateIdentifierAvailability(policy IdentifierReusePolicy, presence Ident
 // ReferenceUsage distinguishes an aggregate's own children from independent
 // records that would retain an external reference after deletion.
 type ReferenceUsage struct {
-	InternalAggregateItems uint
+	InternalAggregateItems   uint
 	ExternalActiveReferences uint
 }
 

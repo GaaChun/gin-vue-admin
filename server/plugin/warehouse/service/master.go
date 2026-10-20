@@ -357,13 +357,10 @@ func (s *MasterService) delete(ctx context.Context, in req.DeleteInput, target i
 		switch x := target.(type) {
 		case *model.Unit:
 			version = x.Version
-			ApplyUpdateAudit(&x.BusinessModel, actor)
 		case *model.Brand:
 			version = x.Version
-			ApplyUpdateAudit(&x.BusinessModel, actor)
 		case *model.Category:
 			version = x.Version
-			ApplyUpdateAudit(&x.BusinessModel, actor)
 		}
 		if e := CheckVersion(version, in.Version); e != nil {
 			return e
@@ -371,7 +368,15 @@ func (s *MasterService) delete(ctx context.Context, in req.DeleteInput, target i
 		if e := refs(tx, in.ID); e != nil {
 			return e
 		}
-		if e := tx.Model(target).Select("updated_by", "version").Updates(target).Error; e != nil {
+		switch x := target.(type) {
+		case *model.Unit:
+			ApplyDeleteAudit(&x.BusinessModel, actor)
+		case *model.Brand:
+			ApplyDeleteAudit(&x.BusinessModel, actor)
+		case *model.Category:
+			ApplyDeleteAudit(&x.BusinessModel, actor)
+		}
+		if e := tx.Model(target).Select("updated_by", "version", "deleted_by", "is_deleted").Updates(target).Error; e != nil {
 			return e
 		}
 		return tx.Delete(target).Error

@@ -420,6 +420,7 @@ it('sorts displayed detail rows without changing their submitted order and uses 
   expect(wrapper.find('.delivery-detail-footer').text()).toContain('上一张')
   expect(wrapper.find('.delivery-detail-footer').text()).toContain('下一张')
   expect(wrapper.find('.delivery-detail-footer').text()).not.toContain('返回列表')
+  expect(wrapper.find('.delivery-detail-footer').text()).not.toContain('复制单据')
   state.notes = [
     { id: 9, version: 1, number: 'A' },
     { id: 10, version: 1, number: 'B' },
@@ -442,4 +443,55 @@ it('sorts displayed detail rows without changing their submitted order and uses 
   const update = mocks.request.mock.calls.map(([request]) => request).find(request => request.url.endsWith('/update'))
   expect(update.data.details.map(detail => detail.id)).toEqual([4, 5])
   expect(update.data.details.map(detail => detail.materialId)).toEqual([7, 6])
+})
+it('copies reviewed delivery data into a new draft without copying identities', async () => {
+  sessionStorage.removeItem('warehouse.delivery.createDraft')
+  mocks.allOptions.mockResolvedValue([])
+  const aggregate = {
+    note: { id: 22, version: 5, number: 'SK260101000022', status: 'reviewed', brandId: 3, department: '仓库', deliveredAt: '2026-02-03T00:00:00Z' },
+    details: [
+      { id: 99, materialId: 7, materialUnitId: 8, unitId: 9, baseUnitId: 9, factor: '1', quantity: '2.5', unitPrice: '12.25', amount: '30.63', materialCodeSnapshot: 'M-7', materialNameSnapshot: '物料七', specificationSnapshot: '规格A', unitNameSnapshot: '件' }
+    ]
+  }
+  mocks.request.mockImplementation(async ({ url }) => {
+    if (url === '/warehouse/delivery/detail') return aggregate
+    if (url.endsWith('/list')) return { list: [], total: 0, page: 1, pageSize: 20 }
+    if (url.endsWith('/departments')) return {}
+    if (url.endsWith('/reserveNumber')) return { number: 'SK260101000023', token: 'new-token' }
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  wrapper = mount(Delivery, { global: { stubs: {
+    'el-table': { props: ['data'], template: '<div><slot /></div>' },
+    'el-table-column': {
+      props: ['label', 'prop', 'sortable', 'type'],
+      data: () => ({ fakeRow: { keyword: '', units: [], errors: {}, status: 'draft', rowKey: 'test', quantity: '', unitPrice: '', materialCode: '', materialName: '', specification: '', unitName: '' } }),
+      template: '<div><slot :row="fakeRow" /></div>'
+    }
+  } } })
+  await flushPromises()
+
+  const state = wrapper.vm.$.setupState
+  expect(wrapper.find('.delivery-detail-footer').text()).toContain('复制单据')
+  await state.copyDocument()
+
+  const draft = JSON.parse(sessionStorage.getItem('warehouse.delivery.createDraft'))
+  expect(draft.form).toMatchObject({ brandId: 3, department: '仓库' })
+  expect(draft.reservation).toEqual({})
+  expect(draft.rows).toHaveLength(1)
+  expect(draft.rows[0]).toMatchObject({
+    materialId: 7, materialUnitId: 8, materialCode: 'M-7',
+    quantity: '2.5', unitPrice: '12.25', unitsLoaded: false
+  })
+  expect(draft.rows[0].id).toBeUndefined()
+  expect(draft.rows[0].amount).toBeUndefined()
+  expect(state.note.id).toBe(22)
+  expect(mocks.push).toHaveBeenCalledWith({ name: 'warehouseDelivery', query: { whDelivery: '1', whNew: '1' } })
+  await state.initializeNew()
+  expect(state.note.id).toBeUndefined()
+  expect(state.form).toMatchObject({ brandId: 3, department: '仓库', deliveredAt: '2026-02-03' })
+  expect(state.reservation).toMatchObject({ number: 'SK260101000023', token: 'new-token' })
+  expect(state.rows).toHaveLength(1)
+  expect(state.rows[0]).toMatchObject({ materialId: 7, materialUnitId: 8, quantity: '2.5', unitPrice: '12.25' })
+  expect(state.rows[0].id).toBeUndefined()
+  expect(mocks.request).toHaveBeenCalledWith({ url: '/warehouse/delivery/reserveNumber', method: 'post' })
 })

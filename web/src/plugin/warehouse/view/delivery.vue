@@ -129,6 +129,7 @@
       <footer class="delivery-detail-footer">
         <div class="delivery-detail-navigation">
           <el-button :disabled="!idOf(note) || editorLoading || saving || actionLoading || rowsLoading" @click="reloadEditor">刷新</el-button>
+          <el-button v-if="idOf(note) && readonly" :disabled="editorLoading || saving || actionLoading || rowsLoading || reserving" @click="copyDocument">复制单据</el-button>
           <el-button type="primary" :disabled="!optionsReady || editorLoading || saving || actionLoading || rowsLoading || reserving" @click="openNew">新增</el-button>
           <el-button :disabled="!canNavigatePrevious" @click="navigateDocument(-1)">上一张</el-button>
           <el-button :disabled="!canNavigateNext" @click="navigateDocument(1)">下一张</el-button>
@@ -547,6 +548,34 @@ function resetEditor() {
 async function openNew() {
   if (editorLoading.value || saving.value || actionLoading.value || rowsLoading.value || reserving.value) return
   if (detailRoute.value && dirty.value && !(await confirm('新增单据将放弃当前送货单的未保存修改，确定继续？', '新建送货单'))) return
+  return enterDetail(null)
+}
+async function copyDocument() {
+  if (!idOf(note.value) || !readonly.value || editorLoading.value || saving.value || actionLoading.value || rowsLoading.value || reserving.value) return
+  if (dirty.value && !(await confirm('复制将使用当前页面内容；原单未保存的修改不会写回。确定继续？', '复制单据'))) return
+  const copiedRows = rows.value.filter((row) => !isEmptyRow(row)).map((row) => ({
+    ...emptyRow(),
+    materialId: row.materialId,
+    materialUnitId: row.materialUnitId,
+    materialCode: row.materialCode,
+    materialName: row.materialName,
+    specification: row.specification,
+    unitName: row.unitName,
+    quantity: String(row.quantity),
+    unitPrice: String(row.unitPrice),
+    units: row.units.map((unit) => ({ ...unit })),
+    unitsLoaded: false
+  }))
+  try {
+    sessionStorage.setItem('warehouse.delivery.createDraft', JSON.stringify({
+      form: { ...form },
+      reservation: {},
+      rows: copiedRows.length ? copiedRows : [emptyRow()]
+    }))
+  } catch (error) {
+    showError(error)
+    return
+  }
   return enterDetail(null)
 }
 async function initializeNew() {
