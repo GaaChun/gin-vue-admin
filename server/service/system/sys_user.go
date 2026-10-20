@@ -279,6 +279,9 @@ func (userService *UserService) SetSelfInfo(req system.SysUser) error {
 //@return: err error
 
 func (userService *UserService) SetSelfSetting(updates common.JSONMap, uid uint) error {
+	if uid == 0 {
+		return errors.New("未登录用户不能设置用户配置")
+	}
 	return global.GVA_DB.Transaction(func(tx *gorm.DB) error {
 		query := tx
 		if tx.Dialector.Name() == "mysql" || tx.Dialector.Name() == "postgres" {

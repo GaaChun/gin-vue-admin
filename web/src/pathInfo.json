@@ -95,6 +95,7 @@
   "/src/plugin/warehouse/components/delivery-material-picker.vue": "DeliveryMaterialPicker",
   "/src/plugin/warehouse/components/report-print-view.vue": "ReportPrintView",
   "/src/plugin/warehouse/components/report-summary.vue": "ReportSummary",
+  "/src/plugin/warehouse/view/delivery-display-settings.vue": "DeliveryDisplaySettings",
   "/src/plugin/warehouse/view/delivery.vue": "WarehouseDelivery",
   "/src/plugin/warehouse/view/master.vue": "Master",
   "/src/plugin/warehouse/view/reconciliation.vue": "WarehouseReconciliation"

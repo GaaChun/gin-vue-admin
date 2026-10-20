@@ -1,13 +1,24 @@
 <template>
   <div class="delivery-page">
     <div v-show="!detailRoute">
-      <el-form inline @submit.prevent="search">
-        <el-form-item label="单号"><el-input v-model="filters.number" clearable placeholder="完整送货单号" @keyup.enter="search" /></el-form-item>
-        <el-form-item label="送货日期"><el-date-picker v-model="filters.dates" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" /></el-form-item>
-        <el-form-item label="客户"><el-select v-model="filters.brandId" clearable filterable class="brand-select"><el-option v-for="brand in brands" :key="idOf(brand)" :value="idOf(brand)" :label="`${brand.code} ${brand.name}`" /></el-select></el-form-item>
-        <el-form-item label="部门"><el-input v-model="filters.department" clearable placeholder="输入部门" @keyup.enter="search" /></el-form-item>
-        <el-form-item label="状态"><el-select v-model="filters.status" clearable class="status-select"><el-option label="未审核" value="draft" /><el-option label="已审核" value="reviewed" /></el-select></el-form-item>
-        <el-form-item><el-button type="primary" @click="search">查询</el-button><el-button @click="resetSearch">重置</el-button></el-form-item>
+      <el-form inline class="delivery-filters" @submit.prevent="search">
+        <template v-for="group in filterGroups" :key="group.key">
+          <div v-show="group.key === 'basic' || moreFiltersOpen" :data-filter-group="group.key">
+            <el-form-item v-for="field in group.fields" :key="field.key" :label="field.label" :data-filter-key="field.key">
+              <el-input v-if="field.key === 'number'" v-model="filters.number" clearable placeholder="完整送货单号" @keyup.enter="search" />
+              <el-date-picker v-else-if="field.key === 'dates'" v-model="filters.dates" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" />
+              <el-select v-else-if="field.key === 'brandId'" v-model="filters.brandId" clearable filterable class="brand-select">
+                <el-option v-for="brand in brands" :key="idOf(brand)" :value="idOf(brand)" :label="`${brand.code} ${brand.name}`" />
+              </el-select>
+              <el-input v-else-if="field.key === 'department'" v-model="filters.department" clearable placeholder="输入部门" @keyup.enter="search" />
+              <el-select v-else-if="field.key === 'status'" v-model="filters.status" clearable class="status-select"><el-option label="未审核" value="draft" /><el-option label="已审核" value="reviewed" /></el-select>
+            </el-form-item>
+          </div>
+        </template>
+        <el-form-item>
+          <el-button type="primary" @click="search">查询</el-button><el-button @click="resetSearch">重置</el-button>
+          <el-button v-if="displaySettings.filters.more.length" link type="primary" @click="moreFiltersOpen = !moreFiltersOpen">{{ moreFiltersOpen ? '收起更多条件' : '更多条件' }}</el-button>
+        </el-form-item>
       </el-form>
     </div>
     <div v-show="!detailRoute" class="gva-table-box">
@@ -17,21 +28,21 @@
         <el-button v-if="!optionsReady" :loading="optionsLoading" @click="loadOptions">重新加载候选资料</el-button>
         <el-button type="success" :disabled="!selectedDrafts.length || actionLoading" :loading="batchLoading === 'review'" @click="batchTransition('review')">批量审核</el-button>
         <el-button type="warning" :disabled="!selectedReviewed.length || actionLoading" :loading="batchLoading === 'unreview'" @click="batchTransition('unreview')">批量反审核</el-button>
+        <el-button @click="router.push({ name: 'warehouseDeliveryDisplaySettings' })">单据展示设置</el-button>
       </div>
       <el-alert v-if="listError" :title="listError" type="error" show-icon :closable="false" />
-      <el-table ref="listTable" v-loading="listLoading" :data="notes" :row-key="idOf" border size="small" :default-sort="{ prop: 'deliveredAt', order: 'descending' }" @sort-change="changeSort" @header-dragend="onHeaderDragEnd" @selection-change="selectionChanged" @row-dblclick="openExisting($event)">
+      <el-table :key="displaySettings.list.columns.join(',')" ref="listTable" v-loading="listLoading" :data="notes" :row-key="idOf" border size="small" :default-sort="{ prop: sortBy || 'deliveredAt', order: sortOrder === 'asc' ? 'ascending' : 'descending' }" @sort-change="changeSort" @header-dragend="onHeaderDragEnd" @selection-change="selectionChanged" @row-dblclick="openExisting($event)">
         <el-table-column type="selection" column-key="__selection" :width="columnWidths.__selection || 48" :selectable="selectableNote" />
         <el-table-column type="index" column-key="__index" label="序号" :width="columnWidths.__index || 65" align="center" :index="pageIndex" />
-        <el-table-column prop="number" label="单号" :width="columnWidths.number" min-width="160" sortable="custom" />
-        <el-table-column prop="deliveredAt" label="送货日期" column-key="deliveredAt" :width="columnWidths.deliveredAt" min-width="130" sortable="custom"><template #default="{ row }">{{ displayDate(row.deliveredAt) }}</template></el-table-column>
-        <el-table-column prop="brandNameSnapshot" label="客户" :width="columnWidths.brandNameSnapshot" min-width="130" sortable="custom" />
-        <el-table-column prop="department" label="部门" :width="columnWidths.department" min-width="120" sortable="custom" />
-        <el-table-column prop="status" label="状态" :width="columnWidths.status || 90" sortable="custom"><template #default="{ row }"><el-tag :type="row.status === 'reviewed' ? 'success' : 'info'">{{ row.status === 'reviewed' ? '已审核' : '未审核' }}</el-tag></template></el-table-column>
-        <el-table-column prop="totalAmount" label="金额" :width="columnWidths.totalAmount" min-width="130" align="right" sortable="custom" />
-        <el-table-column prop="createdByNameSnapshot" label="创建人" :width="columnWidths.createdByNameSnapshot" min-width="110" sortable="custom" />
-        <el-table-column prop="createdAt" label="创建时间" column-key="createdAt" :width="columnWidths.createdAt" min-width="180" sortable="custom"><template #default="{ row }">{{ displayTime(row.CreatedAt ?? row.createdAt) }}</template></el-table-column>
-        <el-table-column prop="reviewedByNameSnapshot" label="审核人" :width="columnWidths.reviewedByNameSnapshot" min-width="110" sortable="custom" />
-        <el-table-column prop="reviewedAt" label="审核时间" column-key="reviewedAt" :width="columnWidths.reviewedAt" min-width="180" sortable="custom"><template #default="{ row }">{{ displayTime(row.reviewedAt) }}</template></el-table-column>
+        <el-table-column v-for="column in orderedDisplayColumns" :key="column.key" :prop="column.key" :label="column.label" :width="displaySettings.list.widths[column.key] || column.width" min-width="80" :align="column.key === 'totalAmount' ? 'right' : 'left'" sortable="custom">
+          <template #default="{ row }">
+            <el-tag v-if="column.key === 'status'" :type="row.status === 'reviewed' ? 'success' : 'info'">{{ row.status === 'reviewed' ? '已审核' : '未审核' }}</el-tag>
+            <span v-else-if="column.key === 'deliveredAt'">{{ displayDate(row.deliveredAt) }}</span>
+            <span v-else-if="column.key === 'createdAt'">{{ displayTime(row.CreatedAt ?? row.createdAt) }}</span>
+            <span v-else-if="column.key === 'reviewedAt'">{{ displayTime(row.reviewedAt) }}</span>
+            <span v-else>{{ row[column.key] }}</span>
+          </template>
+        </el-table-column>
         <el-table-column column-key="__actions" label="操作" fixed="right" :width="columnWidths.__actions || 150"><template #default="{ row }">
           <div class="delivery-row-actions">
             <el-button link size="small" type="primary" :disabled="editorLoading || actionLoading" @click="openExisting(row)">{{ row.status === 'reviewed' ? '查看' : '编辑' }}</el-button>
@@ -46,8 +57,13 @@
     
 
     <div v-if="detailRoute" v-loading="editorLoading" class="delivery-detail-page">
-    
-      <div v-loading="editorLoading" class="delivery-editor">
+      <header class="delivery-detail-heading">
+        <h2>{{ idOf(note) ? '送货单详情' : '新建送货单' }}</h2>
+        <el-tag v-if="idOf(note)" :type="readonly ? 'success' : 'info'">{{ readonly ? '已审核' : '未审核' }}</el-tag>
+        <el-tag v-else type="info">未保存</el-tag>
+      </header>
+      <div class="delivery-detail-scroll">
+      <div class="delivery-editor">
         <el-alert v-if="reservationError" :title="reservationError" type="error" :closable="false" show-icon><template #default><el-button :loading="reserving" @click="reserveNumber">重新预占正式单号</el-button></template></el-alert>
         <el-alert v-if="conflictMessage" :title="conflictMessage" type="error" :closable="false" show-icon><template #default>当前表单未被覆盖。<el-button link type="primary" @click="reloadEditor">放弃本地修改并读取最新版本</el-button></template></el-alert>
         <el-alert v-if="readonly" title="已审核送货单只读。修改前请单独执行反审核。" type="info" :closable="false" />
@@ -76,50 +92,55 @@
           </div>
           <span class="editor-hint">数量最多4位小数且大于0，单价最多4位小数且不小于0；Enter / Tab 前进，Shift+Tab 返回。</span>
         </div>
-        <el-table :data="displayRows" row-key="rowKey" border size="small" class="detail-table" show-summary :summary-method="tableSummary" @sort-change="changeDetailSort">
-          <el-table-column type="index" label="行" width="50" />
-          <el-table-column prop="materialCode" label="物料编号 / 选择" min-width="240" sortable="custom"><template #default="{ row }">
-            <span v-if="readonly">{{ row.materialCode }}</span>
-            <el-select v-else :ref="(element) => setCellRef(row, 'material', element)" :model-value="row.materialId" filterable :filter-method="(value) => row.keyword = value" :loading="row.loading" :disabled="!canEdit" placeholder="编号" @change="(value) => selectMaterial(row, value)" @visible-change="(open) => row.materialOpen = open" @keydown="cellKeydown($event, row, 'material')">
-              <el-option v-if="row.materialId && !inlineMaterials(row).some((item) => idOf(item) === row.materialId)" :value="row.materialId" :label="row.materialCode" disabled />
-              <el-option v-for="material in inlineMaterials(row)" :key="idOf(material)" :value="idOf(material)" :label="material.code"><span>{{ material.code }} {{ material.name }}</span><small class="option-spec">{{ material.specification }}</small></el-option>
-            </el-select>
-            <div v-if="row.errors.materialId" class="cell-error">{{ row.errors.materialId }}</div>
-          </template></el-table-column>
-          <el-table-column prop="materialName" label="物料名称（只读）" min-width="170" sortable="custom" />
-          <el-table-column prop="specification" label="规格（只读）" min-width="150" sortable="custom" />
-          <el-table-column prop="unitName" label="单位" min-width="170" sortable="custom"><template #default="{ row }">
-            <span v-if="readonly">{{ row.unitName }}</span>
-            <el-select v-else :ref="(element) => setCellRef(row, 'unit', element)" :model-value="row.materialUnitId" :disabled="!canEdit || !row.materialId || row.loading" @change="(value) => selectUnit(row, value)" @visible-change="(open) => row.unitOpen = open" @keydown="cellKeydown($event, row, 'unit')">
-              <el-option v-for="binding in row.units" :key="idOf(binding)" :value="idOf(binding)" :label="bindingLabel(binding)" :disabled="!binding.enabled" />
-            </el-select>
-            <div v-if="row.errors.materialUnitId" class="cell-error">{{ row.errors.materialUnitId }}</div>
-          </template></el-table-column>
-          <el-table-column prop="quantity" label="数量" min-width="165" sortable="custom"><template #default="{ row }">
-            <span v-if="readonly">{{ row.quantity }}</span>
-            <el-input v-else :ref="(element) => setCellRef(row, 'quantity', element)" v-model="row.quantity" :disabled="!canEdit" inputmode="decimal" @input="clearFieldError(row, 'quantity')" @compositionstart="row.composing = true" @compositionend="row.composing = false" @keydown="cellKeydown($event, row, 'quantity')" />
-            <div v-if="row.errors.quantity" class="cell-error">{{ row.errors.quantity }}</div>
-          </template></el-table-column>
-          <el-table-column prop="unitPrice" label="单价" min-width="165" sortable="custom"><template #default="{ row }">
-            <span v-if="readonly">{{ row.unitPrice }}</span>
-            <el-input v-else :ref="(element) => setCellRef(row, 'unitPrice', element)" v-model="row.unitPrice" :disabled="!canEdit" inputmode="decimal" @input="clearFieldError(row, 'unitPrice')" @compositionstart="row.composing = true" @compositionend="row.composing = false" @keydown="cellKeydown($event, row, 'unitPrice')" />
-            <div v-if="row.errors.unitPrice" class="cell-error">{{ row.errors.unitPrice }}</div>
-          </template></el-table-column>
-          <el-table-column prop="amount" label="金额" min-width="130" align="right" sortable="custom"><template #default="{ row }">{{ row.amount ?? '保存后计算' }}</template></el-table-column>
+        <el-table :key="detailColumnSignature" :data="displayRows" row-key="rowKey" border size="small" class="detail-table" show-summary :summary-method="tableSummary" @sort-change="changeDetailSort" @header-dragend="onDetailHeaderDragEnd">
+          <el-table-column type="index" label="行" width="50" :fixed="displaySettings.detail.frozen ? 'left' : false" />
+          <el-table-column v-for="(column, index) in orderedDetailColumns" :key="column.key" :prop="column.key" :label="column.label" :width="displaySettings.detail.widths[column.key] || column.width" min-width="80" :fixed="index < displaySettings.detail.frozen ? 'left' : false" :align="column.key === 'amount' ? 'right' : 'left'" sortable="custom">
+            <template #default="{ row }">
+              <template v-if="column.key === 'materialCode'">
+                <span v-if="readonly">{{ row.materialCode }}</span>
+                <el-select v-else :ref="(element) => setCellRef(row, 'material', element)" :model-value="row.materialId" filterable :filter-method="(value) => row.keyword = value" :loading="row.loading" :disabled="!canEdit" placeholder="编号" @change="(value) => selectMaterial(row, value)" @visible-change="(open) => row.materialOpen = open" @keydown="cellKeydown($event, row, 'material')">
+                  <el-option v-if="row.materialId && !inlineMaterials(row).some((item) => idOf(item) === row.materialId)" :value="row.materialId" :label="row.materialCode" disabled />
+                  <el-option v-for="material in inlineMaterials(row)" :key="idOf(material)" :value="idOf(material)" :label="material.code"><span>{{ material.code }} {{ material.name }}</span><small class="option-spec">{{ material.specification }}</small></el-option>
+                </el-select>
+                <div v-if="row.errors.materialId" class="cell-error">{{ row.errors.materialId }}</div>
+              </template>
+              <template v-else-if="column.key === 'unitName'">
+                <span v-if="readonly">{{ row.unitName }}</span>
+                <el-select v-else :ref="(element) => setCellRef(row, 'unit', element)" :model-value="row.materialUnitId" :disabled="!canEdit || !row.materialId || row.loading" @change="(value) => selectUnit(row, value)" @visible-change="(open) => open ? loadRowUnits(row) : row.unitOpen = false" @keydown="cellKeydown($event, row, 'unit')">
+                  <el-option v-for="binding in row.units" :key="idOf(binding)" :value="idOf(binding)" :label="bindingLabel(binding)" :disabled="!binding.enabled" />
+                </el-select>
+                <div v-if="row.errors.materialUnitId" class="cell-error">{{ row.errors.materialUnitId }}</div>
+              </template>
+              <template v-else-if="column.key === 'quantity' || column.key === 'unitPrice'">
+                <span v-if="readonly">{{ row[column.key] }}</span>
+                <el-input v-else :ref="(element) => setCellRef(row, column.key, element)" v-model="row[column.key]" :disabled="!canEdit" inputmode="decimal" @input="clearFieldError(row, column.key)" @compositionstart="row.composing = true" @compositionend="row.composing = false" @keydown="cellKeydown($event, row, column.key)" />
+                <div v-if="row.errors[column.key]" class="cell-error">{{ row.errors[column.key] }}</div>
+              </template>
+              <span v-else-if="column.key === 'amount'">{{ row.amount ?? '保存后计算' }}</span>
+              <span v-else>{{ row[column.key] }}</span>
+            </template>
+          </el-table-column>
           <el-table-column v-if="!readonly" label="操作" width="80" fixed="right"><template #default="{ row }"><el-button link type="danger" :disabled="!canEdit" @click="removeRow(row)">移除</el-button></template></el-table-column>
         </el-table>
         <p class="editor-hint">金额以服务端保存计算为准，不使用浮点数预估。完全空白的尾行不会提交，部分填写的行必须补齐。</p>
         
       </div>
-      
-      <div class="delivery-detail-footer">
-        <el-button :disabled="saving || actionLoading || rowsLoading || reserving" @click="closeEditor">关闭</el-button>
-        <el-button v-if="!readonly" type="primary" :loading="saving" :disabled="!canEdit || (!idOf(note) && !reservation.token)" @click="save()">保存</el-button>
-        <el-button v-if="!readonly" :loading="saving" :disabled="!canEdit || (!idOf(note) && !reservation.token)" @click="save(true)">保存并继续新增</el-button>
-        <el-button v-if="idOf(note) && !readonly" type="success" :loading="actionLoading" :disabled="dirty || !canEdit" @click="transition(note, 'review')">审核</el-button>
-        <el-button v-if="idOf(note) && readonly" type="warning" :loading="actionLoading" @click="transition(note, 'unreview')">反审核</el-button>
-        <el-button v-if="idOf(note) && !readonly" type="danger" :disabled="!canEdit" @click="transition(note, 'delete')">删除</el-button>
       </div>
+      <footer class="delivery-detail-footer">
+        <div class="delivery-detail-navigation">
+          <el-button :disabled="!idOf(note) || editorLoading || saving || actionLoading || rowsLoading" @click="reloadEditor">刷新</el-button>
+          <el-button type="primary" :disabled="!optionsReady || editorLoading || saving || actionLoading || rowsLoading || reserving" @click="openNew">新增</el-button>
+          <el-button :disabled="!canNavigatePrevious" @click="navigateDocument(-1)">上一张</el-button>
+          <el-button :disabled="!canNavigateNext" @click="navigateDocument(1)">下一张</el-button>
+        </div>
+        <div class="delivery-detail-actions">
+          <el-button v-if="idOf(note) && !readonly" type="danger" :disabled="!canEdit" @click="transition(note, 'delete')">删除</el-button>
+          <el-button v-if="!readonly" :loading="saving" :disabled="!canEdit || (!idOf(note) && !reservation.token)" @click="save(true)">保存并继续新增</el-button>
+          <el-button v-if="!readonly" type="primary" :loading="saving" :disabled="!canEdit || (!idOf(note) && !reservation.token)" @click="save()">保存</el-button>
+          <el-button v-if="idOf(note) && !readonly" type="success" :loading="actionLoading" :disabled="dirty || !canEdit" @click="transition(note, 'review')">审核</el-button>
+          <el-button v-if="idOf(note) && readonly" type="warning" :loading="actionLoading" :disabled="actionLoading || editorLoading" @click="transition(note, 'unreview')">反审核</el-button>
+        </div>
+      </footer>
     </div>
     <DeliveryMaterialPicker v-model="pickerOpen" :materials="materials" :categories="categoryTree" :loading="rowsLoading" @confirm="appendMaterials" />
     <el-dialog v-model="quickMaterialDialogOpen" title="新建物料并添加到送货单" width="480px" :close-on-click-modal="false">
@@ -142,14 +163,16 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import DeliveryMaterialPicker from '../components/delivery-material-picker.vue'
-import { getUserList } from '@/api/user'
+import { getUserList, setSelfSetting } from '@/api/user'
+import { useUserStore } from '@/pinia/modules/user'
 import { allOptions, idOf, pageSequenceNumber, request, showError } from '../api/common'
 import { saveMaster } from '../api/master'
 import { useTableWidths } from '../use-table-widths'
+import { DISPLAY_SETTING_KEY, FILTER_FIELDS, LIST_FIELDS, DETAIL_FIELDS, normalizeDisplaySettings, getDefaultDateRange } from '../delivery-display'
 
 defineOptions({ name: 'WarehouseDelivery' })
 const base = '/warehouse/delivery'
@@ -170,6 +193,22 @@ const total = ref(0)
 const filters = reactive({ number: '', dates: [], brandId: undefined, status: '', department: '' })
 const tableWidthKey = 'warehouse.delivery.list'
 const { widths: columnWidths, load: loadColumnWidths, headerDragEnd } = useTableWidths()
+const userStore = useUserStore()
+const displaySettings = computed(() => normalizeDisplaySettings(userStore.userInfo.originSetting?.[DISPLAY_SETTING_KEY]))
+const listFieldMap = new Map(LIST_FIELDS.map((column) => [column.key, column]))
+const detailFieldMap = new Map(DETAIL_FIELDS.map((column) => [column.key, column]))
+const filterFieldMap = new Map(FILTER_FIELDS.map((field) => [field.key, field]))
+const orderedDisplayColumns = computed(() => displaySettings.value.list.columns.map((key) => listFieldMap.get(key)))
+const orderedDetailColumns = computed(() => displaySettings.value.detail.columns.map((key) => detailFieldMap.get(key)))
+const detailColumnSignature = computed(() => `${displaySettings.value.detail.columns.join(',')}:${displaySettings.value.detail.frozen}`)
+const moreFiltersOpen = ref(false)
+const filterGroups = computed(() => ['basic', 'more'].map((key) => ({
+  key, fields: displaySettings.value.filters[key].map((field) => filterFieldMap.get(field))
+})))
+const editingFields = computed(() => orderedDetailColumns.value.map(({ key }) =>
+  ({ materialCode: 'material', unitName: 'unit', quantity: 'quantity', unitPrice: 'unitPrice' })[key]
+).filter(Boolean))
+let widthSaveQueue = Promise.resolve()
 const sortBy = ref('')
 const sortOrder = ref('')
 const usersById = ref(new Map())
@@ -227,6 +266,7 @@ const lineCategoryId = ref()
 const pickerOpen = ref(false)
 const savedSignature = ref('')
 const cellRefs = new Map()
+const materialUnitsCache = new Map()
 let nextRowKey = 0
 let listSequence = 0
 const detailSortBy = ref('')
@@ -251,6 +291,9 @@ const displayRows = computed(() => {
 const readonly = computed(() => note.value.status === 'reviewed')
 const canEdit = computed(() => !readonly.value && !saving.value && !actionLoading.value && !editorLoading.value && !rowsLoading.value)
 const dirty = computed(() => editorOpen.value && signature() !== savedSignature.value)
+const detailListIndex = computed(() => notes.value.findIndex((row) => idOf(row) === idOf(note.value)))
+const canNavigatePrevious = computed(() => detailListIndex.value > 0 && !editorLoading.value && !saving.value && !actionLoading.value && !rowsLoading.value)
+const canNavigateNext = computed(() => detailListIndex.value >= 0 && detailListIndex.value < notes.value.length - 1 && !editorLoading.value && !saving.value && !actionLoading.value && !rowsLoading.value)
 const filteredBrands = computed(() => {
   const keyword = customerSearch.value.trim().toLocaleLowerCase()
   if (!keyword) return brands.value
@@ -340,8 +383,13 @@ function listRouteQuery() {
 }
 function enterDetail(id) {
   const query = { ...route.query, whDelivery: '1' }
-  if (id) query.whId = String(id)
-  else query.whNew = '1'
+  if (id) {
+    query.whId = String(id)
+    delete query.whNew
+  } else {
+    delete query.whId
+    query.whNew = '1'
+  }
   return router.push({ name: route.name, query })
 }
 const unitNames = computed(() => new Map(units.value.map((item) => [idOf(item), item.name])))
@@ -418,7 +466,7 @@ function signature() {
   return JSON.stringify({ brandId: form.brandId, department: form.department, deliveredAt: form.deliveredAt, details: rows.value.map((row) => [row.id, row.materialId, row.materialUnitId, row.quantity, row.unitPrice]) })
 }
 function emptyRow() {
-  return { rowKey: `delivery-row-${++nextRowKey}`, id: undefined, materialId: undefined, materialUnitId: undefined, materialCode: '', materialName: '', specification: '', unitName: '', quantity: '', unitPrice: '', units: [], keyword: '', errors: {}, loading: false, composing: false, materialOpen: false, unitOpen: false }
+  return { rowKey: `delivery-row-${++nextRowKey}`, id: undefined, materialId: undefined, materialUnitId: undefined, materialCode: '', materialName: '', specification: '', unitName: '', quantity: '', unitPrice: '', units: [], unitsLoaded: false, keyword: '', errors: {}, loading: false, composing: false, materialOpen: false, unitOpen: false }
 }
 function isEmptyRow(row) { return !row.materialId && !row.materialUnitId && !row.quantity.trim() && !row.unitPrice.trim() }
 function inlineMaterials(row) {
@@ -444,8 +492,28 @@ function changeSort({ prop, order }) {
   page.value = 1
   loadList()
 }
+function saveColumnWidth(section, width, column) {
+  const key = column.property
+  const registry = section === 'list' ? listFieldMap : detailFieldMap
+  if (!registry.has(key) || !Number.isFinite(width)) return
+  const actor = idOf(userStore.userInfo)
+  widthSaveQueue = widthSaveQueue.then(async () => {
+    if (idOf(userStore.userInfo) !== actor) return
+    const settings = normalizeDisplaySettings(userStore.userInfo.originSetting?.[DISPLAY_SETTING_KEY])
+    settings[section].widths[key] = Math.max(80, Math.min(800, Math.round(width)))
+    const response = await setSelfSetting({ [DISPLAY_SETTING_KEY]: settings })
+    if (response?.code !== 0) throw new Error(response?.msg || '保存列宽失败')
+    if (idOf(userStore.userInfo) !== actor) return
+    userStore.ResetUserInfo({ originSetting: { ...(userStore.userInfo.originSetting || {}), [DISPLAY_SETTING_KEY]: settings } })
+  }).catch(showError)
+  return widthSaveQueue
+}
 function onHeaderDragEnd(newWidth, oldWidth, column) {
-  headerDragEnd(tableWidthKey, newWidth, oldWidth, column)
+  if (listFieldMap.has(column.property)) return saveColumnWidth('list', newWidth, column)
+  return headerDragEnd(tableWidthKey, newWidth, oldWidth, column)
+}
+function onDetailHeaderDragEnd(newWidth, _oldWidth, column) {
+  return saveColumnWidth('detail', newWidth, column)
 }
 async function loadList() {
   const sequence = ++listSequence
@@ -467,13 +535,20 @@ async function loadList() {
   } finally { if (sequence === listSequence) listLoading.value = false }
 }
 function search() { page.value = 1; loadList() }
-function resetSearch() { Object.assign(filters, { number: '', dates: [], brandId: undefined, status: '', department: '' }); search() }
+function resetSearch() {
+  Object.assign(filters, { number: '', dates: getDefaultDateRange(displaySettings.value.dateDefault), brandId: undefined, status: '', department: '' })
+  search()
+}
 function resetEditor() {
   note.value = {}; Object.assign(reservation, { number: '', token: '' }); rows.value = []; cellRefs.clear()
   reservationError.value = ''; conflictMessage.value = ''; lineCategoryId.value = undefined
   Object.assign(form, { brandId: undefined, department: '', deliveredAt: shanghaiInput(new Date()).slice(0, 10) })
 }
-function openNew() { return enterDetail(null) }
+async function openNew() {
+  if (editorLoading.value || saving.value || actionLoading.value || rowsLoading.value || reserving.value) return
+  if (detailRoute.value && dirty.value && !(await confirm('新增单据将放弃当前送货单的未保存修改，确定继续？', '新建送货单'))) return
+  return enterDetail(null)
+}
 async function initializeNew() {
   resetEditor()
   const draft = readCreateDraft()
@@ -514,24 +589,35 @@ async function readAggregate(data) {
   rows.value = details.map((detail) => ({ ...emptyRow(), id: idOf(detail), materialId: detail.materialId, materialUnitId: detail.materialUnitId, materialCode: detail.materialCodeSnapshot, materialName: detail.materialNameSnapshot, specification: detail.specificationSnapshot || '', unitName: detail.unitNameSnapshot, quantity: String(detail.quantity), unitPrice: String(detail.unitPrice), amount: detail.amount, units: [{ ID: detail.materialUnitId, unitId: detail.unitId, factor: detail.factor, name: detail.unitNameSnapshot, enabled: false, isBase: detail.unitId === detail.baseUnitId }] }))
   if (!readonly.value && !rows.value.length) rows.value.push(emptyRow())
   savedSignature.value = signature(); conflictMessage.value = ''
-  if (readonly.value) return
-  // Keep historical labels/bindings if current master data is gone or disabled.
-  const materialIds = [...new Set(rows.value.map((row) => row.materialId).filter(Boolean))]
-  await Promise.all(materialIds.map(async (id) => {
-    try {
-      const material = await request({ url: '/warehouse/master/materials/detail', method: 'get', params: { id } })
-      for (const row of rows.value.filter((item) => item.materialId === id)) {
-        const bindings = (material.units || []).filter((binding) => binding.enabled).map((binding) => ({ ...binding }))
-        const historical = row.units[0]
-        const matching = bindings.find((binding) => idOf(binding) === row.materialUnitId)
-        if (matching) matching.name = row.unitName
-        else bindings.unshift(historical)
-        row.units = bindings
-      }
-    } catch {
-      // Existing rows remain editable by their persisted identity and snapshot.
+}
+async function loadRowUnits(row) {
+  row.unitOpen = true
+  if (readonly.value || !row.materialId || row.unitsLoaded || row.loading) return
+  const materialId = row.materialId
+  row.loading = true
+  rowsLoading.value = true
+  try {
+    let pending = materialUnitsCache.get(materialId)
+    if (!pending) {
+      pending = request({ url: '/warehouse/master/materials/detail', method: 'get', params: { id: materialId } })
+        .then((material) => (material.units || []).filter((binding) => binding.enabled).map((binding) => ({ ...binding })))
+      materialUnitsCache.set(materialId, pending)
     }
-  }))
+    const bindings = (await pending).map((binding) => ({ ...binding }))
+    if (row.materialId !== materialId) return
+    const historical = row.units.find((binding) => idOf(binding) === row.materialUnitId) || row.units[0]
+    const matching = bindings.find((binding) => idOf(binding) === row.materialUnitId)
+    if (matching) matching.name = row.unitName
+    else if (historical) bindings.unshift({ ...historical })
+    row.units = bindings
+    row.unitsLoaded = true
+  } catch {
+    materialUnitsCache.delete(materialId)
+    // Keep historical labels/bindings if current master data is gone or disabled.
+  } finally {
+    row.loading = false
+    rowsLoading.value = rows.value.some((item) => item.loading)
+  }
 }
 async function initializeExisting(row) {
   if (editorLoading.value) return
@@ -544,6 +630,15 @@ function openExisting(row) { return enterDetail(idOf(row)) }
 async function reloadEditor() {
   if (!idOf(note.value) || !(await confirm('将丢弃当前表单修改并重新读取最新单据，确定继续？'))) return
   await initializeExisting(note.value)
+}
+async function navigateDocument(direction) {
+  if (!idOf(note.value) || editorLoading.value || saving.value || actionLoading.value || rowsLoading.value) return
+  if (dirty.value && !(await confirm('切换单据将丢弃当前未保存的修改，确定继续？', '切换送货单'))) return
+  const target = notes.value[detailListIndex.value + direction]
+  if (!target) return
+  const query = { ...route.query, whDelivery: '1', whId: String(idOf(target)) }
+  delete query.whNew
+  await router.push({ name: route.name, query })
 }
 async function confirm(message, title = '操作确认') {
   try { await ElMessageBox.confirm(message, title, { type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消' }); return true }
@@ -588,7 +683,7 @@ async function currentMaterial(id) {
   return { material, bindings, baseBinding }
 }
 function applyMaterial(row, { material, bindings, baseBinding }) {
-  Object.assign(row, { materialId: idOf(material), materialUnitId: idOf(baseBinding), materialCode: material.code, materialName: material.name, specification: material.specification || '', unitName: unitNames.value.get(baseBinding.unitId) || '', units: bindings, keyword: '', errors: {}, amount: undefined })
+  Object.assign(row, { materialId: idOf(material), materialUnitId: idOf(baseBinding), materialCode: material.code, materialName: material.name, specification: material.specification || '', unitName: unitNames.value.get(baseBinding.unitId) || '', units: bindings, unitsLoaded: true, keyword: '', errors: {}, amount: undefined })
 }
 async function selectMaterial(row, materialId) {
   if (!canEdit.value || row.loading) return
@@ -638,7 +733,7 @@ function cellKeydown(event, row, field) {
   if (!canEdit.value || event.isComposing || row.composing || event.keyCode === 229 || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return
   if (!['Enter', 'Tab'].includes(event.key)) return
   if ((field === 'material' && row.materialOpen) || (field === 'unit' && row.unitOpen)) return
-  const fields = ['material', 'unit', 'quantity', 'unitPrice']
+  const fields = editingFields.value
   const index = fields.indexOf(field)
   const orderedRows = displayRows.value
   const rowIndex = orderedRows.findIndex((item) => item.rowKey === row.rowKey)
@@ -646,7 +741,7 @@ function cellKeydown(event, row, field) {
     if (event.key !== 'Tab') return
     const target = index > 0 ? row : orderedRows[rowIndex - 1]
     if (!target) return
-    event.preventDefault(); focusCell(target, fields[index > 0 ? index - 1 : 3]); return
+    event.preventDefault(); focusCell(target, fields[index > 0 ? index - 1 : fields.length - 1]); return
   }
   // Enter on a closed select belongs to the select; only its confirmation moves focus.
   if ((field === 'material' || field === 'unit') && event.key === 'Enter') return
@@ -658,7 +753,7 @@ function cellKeydown(event, row, field) {
   else {
     let target = orderedRows[rowIndex + 1]
     if (!target) { target = emptyRow(); rows.value.push(target) }
-    focusCell(target, 'material')
+    focusCell(target, fields[0])
   }
 }
 function validatedDetails() {
@@ -745,6 +840,29 @@ async function transition(row, action) {
 }
 watch([form, rows, reservation], persistCreateDraft, { deep: true })
 onBeforeUnmount(persistCreateDraft)
+watch(() => displaySettings.value.dateDefault, (preset) => {
+  filters.dates = getDefaultDateRange(preset)
+}, { immediate: true })
+watch(() => [...displaySettings.value.filters.basic, ...displaySettings.value.filters.more], (visible) => {
+  const empty = { number: '', department: '', status: '', brandId: undefined, dates: [] }
+  for (const key of Object.keys(empty)) if (!visible.includes(key)) filters[key] = empty[key]
+}, { immediate: true })
+watch(() => displaySettings.value.list.columns, (columns) => {
+  selectedNotes.value = []
+  if (sortBy.value && !columns.includes(sortBy.value)) { sortBy.value = ''; sortOrder.value = '' }
+})
+let activatedOnce = false
+onActivated(() => {
+  if (activatedOnce && !detailRoute.value) loadList()
+  activatedOnce = true
+})
+watch(() => idOf(userStore.userInfo), () => {
+  Object.assign(filters, { number: '', dates: getDefaultDateRange(displaySettings.value.dateDefault), brandId: undefined, status: '', department: '' })
+  moreFiltersOpen.value = false
+  notes.value = []; selectedNotes.value = []; total.value = 0
+  loadColumnWidths(tableWidthKey)
+  if (idOf(userStore.userInfo) && !detailRoute.value) search()
+})
 onMounted(() => { loadList(); loadOptions(); loadDepartments(); loadUsers(); loadColumnWidths(tableWidthKey) })
 watch(() => [route.query.whDelivery, route.query.whId, route.query.whNew], async ([detail, id, isNew]) => {
   if (detail !== '1' || (!id && isNew !== '1')) {
@@ -759,15 +877,22 @@ watch(() => [route.query.whDelivery, route.query.whId, route.query.whNew], async
 <style scoped>
 .brand-select { width: 230px; }
 .status-select { width: 125px; }
-.delivery-editor { min-height: 240px; }
-.editor-header { margin-top: 20px; }
-.editor-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-.editor-tools :deep(.el-select) { min-width: 240px; }
-.editor-hint { font-size: 12px; color: var(--el-text-color-secondary); }
-.cell-error { color: var(--el-color-danger); font-size: 12px; line-height: 1.5; margin-top: 4px; }
-.option-spec { margin-left: 12px; color: var(--el-text-color-secondary); }
-.detail-table :deep(.el-select) { width: 100%; }
-.delivery-row-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.delivery-row-actions :deep(.el-button + .el-button) { margin-left: 0; }
-.delivery-editor > .el-alert { margin-bottom: 12px; }
+ .delivery-detail-page { display: flex; flex-direction: column; height: calc(100vh - 150px); min-height: 320px; overflow: hidden; }
+ .delivery-detail-heading { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; padding: 0 0 12px; }
+ .delivery-detail-heading h2 { margin: 0; font-size: 20px; font-weight: 600; }
+ .delivery-detail-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 4px 16px; }
+ .delivery-detail-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex: 0 0 auto; padding: 12px 0 0; border-top: 1px solid var(--el-border-color); background: var(--el-bg-color); }
+ .delivery-detail-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; }
+ .delivery-detail-actions :deep(.el-button + .el-button) { margin-left: 0; }
+ .delivery-editor { min-height: 240px; }
+ .editor-header { margin-top: 20px; }
+ .editor-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+ .editor-tools :deep(.el-select) { min-width: 240px; }
+ .editor-hint { font-size: 12px; color: var(--el-text-color-secondary); }
+ .cell-error { color: var(--el-color-danger); font-size: 12px; line-height: 1.5; margin-top: 4px; }
+ .option-spec { margin-left: 12px; color: var(--el-text-color-secondary); }
+ .detail-table :deep(.el-select) { width: 100%; }
+ .delivery-row-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+ .delivery-row-actions :deep(.el-button + .el-button) { margin-left: 0; }
+ .delivery-editor > .el-alert { margin-bottom: 12px; }
 </style>

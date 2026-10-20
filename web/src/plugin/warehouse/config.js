@@ -6,6 +6,7 @@ export default {
     category: 'plugin/warehouse/view/master.vue',
     material: 'plugin/warehouse/view/master.vue',
     delivery: 'plugin/warehouse/view/delivery.vue',
+    deliveryDisplaySettings: 'plugin/warehouse/view/delivery-display-settings.vue',
     reconciliation: 'plugin/warehouse/view/reconciliation.vue',
   },
 }

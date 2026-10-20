@@ -29,6 +29,7 @@ vi.mock('../api/common', () => ({
 vi.mock('@/api/user', () => ({ getUserList: vi.fn(async () => ({ code: 0, data: { list: [] } })) }))
 vi.mock('../components/delivery-material-picker.vue', () => ({ default: { props: ['materials'], template: '<div class="picker-materials">{{ materials.map(material => material.code).join(",") }}</div>' } }))
 vi.mock('../api/table-widths', () => ({ getTableWidths: vi.fn(async () => ({})), saveTableWidths: vi.fn(async () => ({})) }))
+vi.mock('@/pinia/modules/user', () => ({ useUserStore: () => ({ userInfo: { ID: 1, originSetting: {} }, ResetUserInfo: vi.fn() }) }))
 
 let wrapper
 afterEach(() => {
@@ -403,6 +404,33 @@ it('sorts displayed detail rows without changing their submitted order and uses 
   await flushPromises()
 
   const state = wrapper.vm.$.setupState
+  const secondMaterialId = state.rows[1].materialId
+  state.rows[1].materialId = state.rows[0].materialId
+  await Promise.all([state.loadRowUnits(state.rows[0]), state.loadRowUnits(state.rows[1])])
+  state.rows[1].materialId = secondMaterialId
+  expect(mocks.request.mock.calls.map(([request]) => request.url).filter(url => url === '/warehouse/master/materials/detail')).toHaveLength(1)
+  expect(state.rows.slice(0, 2).every(row => row.units.some(binding => binding.ID === 8))).toBe(true)
+  expect(wrapper.find('.delivery-detail-heading').text()).toContain('送货单详情')
+  expect(wrapper.find('.delivery-detail-heading').text()).toContain('未审核')
+  expect(wrapper.find('.delivery-detail-scroll').exists()).toBe(true)
+  expect(wrapper.find('.delivery-detail-footer').text()).toContain('审核')
+  expect(wrapper.find('.delivery-detail-footer').text()).toContain('删除')
+  expect(wrapper.find('.delivery-detail-footer').text()).toContain('刷新')
+  expect(wrapper.find('.delivery-detail-footer').text()).toContain('新增')
+  expect(wrapper.find('.delivery-detail-footer').text()).toContain('上一张')
+  expect(wrapper.find('.delivery-detail-footer').text()).toContain('下一张')
+  expect(wrapper.find('.delivery-detail-footer').text()).not.toContain('返回列表')
+  state.notes = [
+    { id: 9, version: 1, number: 'A' },
+    { id: 10, version: 1, number: 'B' },
+    { id: 11, version: 1, number: 'C' }
+  ]
+  await state.navigateDocument(1)
+  expect(mocks.push).toHaveBeenCalledWith({ name: 'warehouseDelivery', query: { whDelivery: '1', whId: '11' } })
+  await state.openNew()
+  expect(mocks.push).toHaveBeenLastCalledWith({ name: 'warehouseDelivery', query: { whDelivery: '1', whNew: '1' } })
+  await state.reloadEditor()
+  expect(mocks.request.mock.calls.filter(([request]) => request.url === '/warehouse/delivery/detail')).toHaveLength(2)
   expect(wrapper.find('.detail-table').attributes('data-size')).toBe('small')
   expect(wrapper.findAll('.detail-table .detail-column').filter(column => column.attributes('data-sortable') === 'custom')).toHaveLength(7)
   state.changeDetailSort({ prop: 'quantity', order: 'ascending' })
