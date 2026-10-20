@@ -69,7 +69,7 @@
       </div>
     </div>
     <div v-if="detailRoute" class="master-detail-page">
-      <div class="master-detail-heading"><h2>{{ `${form.id ? '编辑' : '新建'}${title}` }}</h2><el-button @click="closeEditor">返回列表</el-button></div>
+      
       <div v-loading="detailLoading">
         <el-alert v-if="saveError" :title="saveError" type="error" show-icon :closable="false" class="error-alert">
           <template v-if="conflictVersion" #default>

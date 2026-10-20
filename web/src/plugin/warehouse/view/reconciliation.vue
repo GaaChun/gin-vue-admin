@@ -167,6 +167,7 @@
           <el-table-column v-for="column in resultColumns" :key="column.id" :prop="column.id" :label="column.label" :width="columnWidths[column.id] || columnWidth(column)" min-width="48" show-overflow-tooltip sortable="custom" :align="column.kind === 'metric' ? 'right' : 'left'">
             <template #default="{ row }">
               <el-tooltip v-if="row.values[column.id] == null && row.unavailable?.[column.id]" :content="row.unavailable[column.id]" placement="top"><span class="unavailable">—</span></el-tooltip>
+              <el-button v-else-if="column.id === 'noteNumber' && row.noteId" link type="primary" @click="openDelivery(row.noteId)">{{ row.values[column.id] ?? '—' }}</el-button>
               <span v-else>{{ row.values[column.id] ?? '—' }}</span>
               <small v-if="column.id === 'baseQuantity' && row.baseUnits?.length" class="base-unit">{{ row.baseUnits.map((item) => `${item.unitName} #${item.unitId}`).join('、') }}</small>
             </template>
@@ -203,6 +204,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/pinia/modules/user'
 import { idOf, pageSequenceNumber, showError } from '../api/common'
@@ -214,6 +216,10 @@ import { useTableWidths } from '../use-table-widths'
 defineOptions({ name: 'WarehouseReconciliation' })
 const defaults = ['deliveryDay', 'noteNumber', 'brand', 'department', 'materialCode', 'materialName', 'specification', 'unit', 'quantity', 'unitPrice', 'amount']
 const user = useUserStore()
+const router = useRouter()
+function openDelivery(id) {
+  router.push({ name: 'warehouseDelivery', query: { whDelivery: '1', whId: String(id) } })
+}
 const available = ref([])
 const columns = ref([...defaults])
 const collapsed = ref(false)

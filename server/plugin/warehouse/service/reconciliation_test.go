@@ -1,6 +1,8 @@
 package service
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -8,6 +10,25 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+func TestReconciliationProjectionIncludesDeliveryIDForNumberLink(t *testing.T) {
+	item := line("件", 1, "1", "2", "2.00", "1")
+	item.NoteID = 42
+	item.NoteNumber = "SK260101000042"
+	result, err := BuildProjection([]ReconciliationLine{item}, req.ReconciliationQuery{
+		Columns: []string{"noteNumber", "amount"},
+	}, false)
+	if err != nil || len(result.List) != 1 || result.List[0].NoteID != 42 {
+		t.Fatalf("projection=%#v err=%v", result, err)
+	}
+	encoded, err := json.Marshal(result.List[0])
+	if err != nil || !json.Valid(encoded) || !containsJSONField(encoded, `"noteId":42`) {
+		t.Fatalf("row JSON=%s err=%v", encoded, err)
+	}
+}
+
+func containsJSONField(encoded []byte, field string) bool {
+	return bytes.Contains(encoded, []byte(field))
+}
 func TestReconciliationSampleGroupsBySelectedDimensions(t *testing.T) {
 	lines := sampleLines()
 	brand, err := BuildProjection(lines, req.ReconciliationQuery{Columns: []string{"brand", "amount"}}, false)

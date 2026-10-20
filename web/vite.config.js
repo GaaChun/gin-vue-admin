@@ -6,7 +6,7 @@ import vuePlugin from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import VueFilePathPlugin from './vitePlugin/componentName/index.js'
 // import { svgBuilder } from 'vite-auto-import-svg'
-import vueRootValidator from 'vite-check-multiple-dom'
+// import vueRootValidator from 'vite-check-multiple-dom'
 // import { AddSecret } from './vitePlugin/secret'
 import UnoCSS from '@unocss/vite'
 
@@ -85,7 +85,7 @@ export default ({ mode }) => {
       [Banner(`\n Build based on gin-vue-admin \n Time : ${timestamp}`)],
       VueFilePathPlugin('./src/pathInfo.json'),
       UnoCSS(),
-      vueRootValidator()
+      // vueRootValidator()
     ]
   }
   return config

@@ -46,7 +46,7 @@
     
 
     <div v-if="detailRoute" v-loading="editorLoading" class="delivery-detail-page">
-      <div class="delivery-detail-heading"><h2>{{ editorTitle }}</h2><el-button @click="closeEditor">返回列表</el-button></div>
+    
       <div v-loading="editorLoading" class="delivery-editor">
         <el-alert v-if="reservationError" :title="reservationError" type="error" :closable="false" show-icon><template #default><el-button :loading="reserving" @click="reserveNumber">重新预占正式单号</el-button></template></el-alert>
         <el-alert v-if="conflictMessage" :title="conflictMessage" type="error" :closable="false" show-icon><template #default>当前表单未被覆盖。<el-button link type="primary" @click="reloadEditor">放弃本地修改并读取最新版本</el-button></template></el-alert>
@@ -69,27 +69,20 @@
           <el-form-item v-if="idOf(note)" label="审核时间"><el-input :model-value="displayTime(note.reviewedAt)" readonly /></el-form-item>
         </el-form>
         <div v-if="!readonly" class="editor-tools">
-          <el-tree-select v-model="lineCategoryId" :data="categoryTree" check-strictly clearable filterable placeholder="录入候选类别（含子类别）" :props="{ value: 'id', label: 'label', children: 'children' }" />
-          <el-button :disabled="!canEdit" @click="addBlankRow">新增空行</el-button>
-          <el-button type="primary" :disabled="!canEdit || !optionsReady" @click="pickerOpen = true">批量选择物料</el-button>
-          <el-autocomplete
-            v-model="quickMaterialSearch"
-            :fetch-suggestions="suggestQuickMaterials"
-            :disabled="!canEdit || !optionsReady"
-            class="quick-material-search"
-            placeholder="快捷添加：编号 / 名称 / 助记符"
-            @select="quickAddMaterial"
-          />
-          <el-button :disabled="!canEdit || !optionsReady" @click="openQuickMaterialCreate">新建物料并添加</el-button>
+          <div class="editor-tool-actions">
+            <el-button :disabled="!canEdit" @click="addBlankRow">新增空行</el-button>
+            <el-button type="primary" :disabled="!canEdit || !optionsReady" @click="pickerOpen = true">批量选择物料</el-button>
+            <el-button :disabled="!canEdit || !optionsReady" @click="openQuickMaterialCreate">新建物料并添加</el-button>
+          </div>
           <span class="editor-hint">数量最多4位小数且大于0，单价最多4位小数且不小于0；Enter / Tab 前进，Shift+Tab 返回。</span>
         </div>
         <el-table :data="displayRows" row-key="rowKey" border size="small" class="detail-table" show-summary :summary-method="tableSummary" @sort-change="changeDetailSort">
           <el-table-column type="index" label="行" width="50" />
           <el-table-column prop="materialCode" label="物料编号 / 选择" min-width="240" sortable="custom"><template #default="{ row }">
             <span v-if="readonly">{{ row.materialCode }}</span>
-            <el-select v-else :ref="(element) => setCellRef(row, 'material', element)" :model-value="row.materialId" filterable :filter-method="(value) => row.keyword = value" :loading="row.loading" :disabled="!canEdit" placeholder="编号 / 名称 / 助记符" @change="(value) => selectMaterial(row, value)" @visible-change="(open) => row.materialOpen = open" @keydown="cellKeydown($event, row, 'material')">
-              <el-option v-if="row.materialId && !inlineMaterials(row).some((item) => idOf(item) === row.materialId)" :value="row.materialId" :label="`${row.materialCode} ${row.materialName}`" disabled />
-              <el-option v-for="material in inlineMaterials(row)" :key="idOf(material)" :value="idOf(material)" :label="`${material.code} ${material.name}`"><span>{{ material.code }} {{ material.name }}</span><small class="option-spec">{{ material.specification }}</small></el-option>
+            <el-select v-else :ref="(element) => setCellRef(row, 'material', element)" :model-value="row.materialId" filterable :filter-method="(value) => row.keyword = value" :loading="row.loading" :disabled="!canEdit" placeholder="编号" @change="(value) => selectMaterial(row, value)" @visible-change="(open) => row.materialOpen = open" @keydown="cellKeydown($event, row, 'material')">
+              <el-option v-if="row.materialId && !inlineMaterials(row).some((item) => idOf(item) === row.materialId)" :value="row.materialId" :label="row.materialCode" disabled />
+              <el-option v-for="material in inlineMaterials(row)" :key="idOf(material)" :value="idOf(material)" :label="material.code"><span>{{ material.code }} {{ material.name }}</span><small class="option-spec">{{ material.specification }}</small></el-option>
             </el-select>
             <div v-if="row.errors.materialId" class="cell-error">{{ row.errors.materialId }}</div>
           </template></el-table-column>
@@ -257,7 +250,6 @@ const displayRows = computed(() => {
 })
 const readonly = computed(() => note.value.status === 'reviewed')
 const canEdit = computed(() => !readonly.value && !saving.value && !actionLoading.value && !editorLoading.value && !rowsLoading.value)
-const editorTitle = computed(() => `${idOf(note.value) ? (readonly.value ? '查看' : '编辑') : '新建'}送货单`)
 const dirty = computed(() => editorOpen.value && signature() !== savedSignature.value)
 const filteredBrands = computed(() => {
   const keyword = customerSearch.value.trim().toLocaleLowerCase()

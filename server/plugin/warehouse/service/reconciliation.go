@@ -26,6 +26,7 @@ type ReportColumn struct {
 }
 
 type ReportRow struct {
+	NoteID      uint              `json:"noteId"`
 	Values      map[string]*string `json:"values"`
 	Unavailable map[string]string  `json:"unavailable,omitempty"`
 	BaseUnits   []QuantityBucket   `json:"baseUnits,omitempty"`
@@ -57,6 +58,7 @@ type ReportProjection struct {
 }
 
 type ReconciliationLine struct {
+	NoteID                                    uint `gorm:"column:note_id"`
 	DeliveredAt, CreatedAt                    time.Time
 	ReviewedAt                                *time.Time
 	Deleted                                   bool
@@ -231,7 +233,7 @@ func (g *reportGroup) row(columns []ReportColumn) ReportRow {
 	if len(unavailable) == 0 {
 		unavailable = nil
 	}
-	result := ReportRow{Values: values, Unavailable: unavailable}
+	result := ReportRow{NoteID: g.lines[0].NoteID, Values: values, Unavailable: unavailable}
 	for _, column := range columns {
 		if column.ID == "baseQuantity" {
 			result.BaseUnits = buckets(g.lines, true)

@@ -54,7 +54,7 @@ func (s *ReconciliationService) readSnapshot(ctx context.Context, use func([]Rec
 		err := tx.Table("wh_delivery_details AS d").
 			Joins("JOIN wh_delivery_notes AS n ON n.id = d.note_id").
 			Where("n.deleted_at IS NULL AND d.deleted_at IS NULL AND n.status = ?", string(DeliveryReviewed)).
-			Select(`n.delivered_at, n.created_at, n.reviewed_at, n.status,
+			Select(`n.id AS note_id, n.delivered_at, n.created_at, n.reviewed_at, n.status,
 			 n.number AS note_number, n.department, n.brand_id, n.brand_code_snapshot AS brand_code, n.brand_name_snapshot AS brand_name,
 			 d.material_id, d.material_code_snapshot AS material_code, d.material_name_snapshot AS material_name,
 			 d.specification_snapshot AS specification, d.category_id, d.category_code_snapshot AS category_code, d.category_name_snapshot AS category_name,
