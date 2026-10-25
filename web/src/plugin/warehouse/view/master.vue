@@ -1,5 +1,5 @@
 <template>
-  <div class="warehouse-master">
+  <div class="warehouse-master py-2">
     <div v-show="!detailRoute">
       <el-form :inline="true" :model="search" @submit.prevent="query">
         <el-form-item :label="resource === 'units' ? '单位名称' : '关键词'">
@@ -7,7 +7,7 @@
         </el-form-item>
         <el-form-item v-if="isMaterial" label="客户">
           <el-select v-model="search.brandId" clearable filterable placeholder="全部客户" class="brand-select">
-            <el-option v-for="item in brands" :key="idOf(item)" :label="`${item.code} · ${item.name}`" :value="idOf(item)" />
+            <el-option v-for="item in brands" :key="idOf(item)" :label="item.name" :value="idOf(item)"><span class="master-option"><span>{{ item.name }}</span><span class="master-option-code">{{ item.code }}</span></span></el-option>
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -77,7 +77,7 @@
             <el-button link type="primary" @click="reloadDetail">重新载入（会放弃当前修改）</el-button>
           </template>
         </el-alert>
-        <el-form ref="formRef" :model="form" label-width="90px" @submit.prevent="save">
+        <el-form ref="formRef" :model="form" label-width="90px" class="master-editor-grid" @submit.prevent="save">
           <el-form-item label="名称" prop="name" required :error="errors.name"><el-input v-model="form.name" :maxlength="isMaterial ? 200 : 100" show-word-limit @blur="suggestMnemonic()" /></el-form-item>
           <template v-if="resource !== 'units'">
             <el-form-item label="编号" prop="code" required :error="errors.code"><el-input v-model="form.code" maxlength="64" show-word-limit /></el-form-item>
@@ -91,14 +91,14 @@
           </el-form-item>
           <template v-if="isMaterial">
             <el-form-item label="客户" prop="brandId" :error="errors.brandId">
-              <el-select v-model="form.brandId" clearable filterable placeholder="请选择客户（可选）" class="full-width"><el-option v-for="item in brands" :key="idOf(item)" :label="`${item.code} · ${item.name}`" :value="idOf(item)" /></el-select>
+              <el-select v-model="form.brandId" clearable filterable placeholder="请选择客户（可选）" class="full-width"><el-option v-for="item in brands" :key="idOf(item)" :label="item.name" :value="idOf(item)"><span class="master-option"><span>{{ item.name }}</span><span class="master-option-code">{{ item.code }}</span></span></el-option></el-select>
             </el-form-item>
             <el-form-item label="类别" prop="categoryId" :error="errors.categoryId">
               <el-tree-select v-model="form.categoryId" :data="categoryOptions" :props="treeProps" node-key="id" check-strictly clearable filterable default-expand-all :render-after-expand="false" class="full-width" />
             </el-form-item>
             <el-form-item label="规格" prop="specification" :error="errors.specification"><el-input v-model="form.specification" maxlength="255" show-word-limit /></el-form-item>
             <el-form-item label="别名" prop="alias" :error="errors.alias"><el-input v-model="form.alias" maxlength="200" show-word-limit /></el-form-item>
-            <el-form-item label="物料图片" prop="imageFileId" :error="errors.imageFileId || errors.file">
+            <el-form-item label="物料图片" prop="imageFileId" class="master-editor-wide" :error="errors.imageFileId || errors.file">
               <div class="image-editor">
                 <el-image v-if="imageUrl" :src="imageUrl" :preview-src-list="[imageUrl]" preview-teleported fit="contain" class="material-image" />
                 <span v-else-if="form.imageFileId">已关联文件 #{{ form.imageFileId }}</span>
@@ -109,7 +109,7 @@
                 <div class="field-hint">仅 jpg/jpeg/png/bmp，最大 1MiB；不压缩，服务端验证实际内容。{{ form.imageFileId ? `文件 ID：${form.imageFileId}` : '' }}</div>
               </div>
             </el-form-item>
-            <el-form-item label="单位集合" prop="units" required :error="errors.units || errors.factor">
+            <el-form-item label="单位集合" prop="units" class="master-editor-full" required :error="errors.units || errors.factor">
               <div class="full-width">
                 <el-alert title="必须且只能有一个启用的基本单位，系数固定为 1。保存替换完整单位集合；已被送货引用的单位不能删除，可停用。" type="info" :closable="false" class="error-alert" />
                 <el-table :data="form.units" :row-key="(row) => row.rowKey" border>
@@ -123,7 +123,7 @@
               </div>
             </el-form-item>
           </template>
-          <el-descriptions v-if="form.id" title="审计信息" :column="2" border size="small">
+          <el-descriptions v-if="form.id" title="审计信息" class="master-editor-full" :column="2" border size="small">
             <el-descriptions-item label="记录 ID">{{ form.id }}</el-descriptions-item>
             <el-descriptions-item label="版本">{{ form.version }}</el-descriptions-item>
             <el-descriptions-item label="创建人">{{ userNickname(audit.createdBy) }}</el-descriptions-item>
@@ -154,7 +154,7 @@ import { getUserList } from '@/api/user'
 import { formatDate } from '@/utils/format'
 import { getUrl } from '@/utils/image'
 import { allOptions, idOf, pageSequenceNumber, showError } from '../api/common'
-import { deleteMaster, detailMaster, downloadMasterTemplate, exportMaster, getCategoryTree, importMaster, listMaster, saveMaster, suggestMasterMnemonic, uploadMasterImage } from '../api/master'
+import { deleteMaster, detailMaster, downloadMasterTemplate, exportMaster, getCategoryTree, importMaster, listMaster, reserveMasterCode, saveMaster, suggestMasterMnemonic, uploadMasterImage } from '../api/master'
 
 import { useTableWidths } from '../use-table-widths'
 const route = useRoute()
@@ -391,11 +391,16 @@ async function initializeEditor(row, parentId = 0) {
       audit.value = detail
       imageUrl.value = detail.imageUrl ? getUrl(detail.imageUrl) : ''
       mnemonicManual.value = Boolean(detail.mnemonic)
+    } else if (resource.value !== 'units') {
+      const result = await reserveMasterCode(resource.value)
+      if (sequence !== editorSequence) return
+      if (!form.code) form.code = result.code
     }
     if (sequence === editorSequence) cleanSnapshot = JSON.stringify(form)
   } catch (error) {
     if (sequence !== editorSequence) return
     visible.value = false
+    saveError.value = error.message || '资料初始化失败，请关闭后重试'
     showError(error)
   } finally {
     if (sequence === editorSequence) detailLoading.value = false
@@ -642,5 +647,13 @@ watch(() => [route.query.whDetail, route.query.whId, route.query.whNew, route.qu
 .image-editor .field-hint { flex-basis: 100%; }
 .material-image { width: 120px; height: 120px; border: 1px solid var(--el-border-color); border-radius: 4px; }
 .add-unit { margin-top: 12px; }
+.master-option { display: flex; justify-content: space-between; gap: 20px; width: 100%; }
+.master-option-code { color: var(--el-text-color-secondary); font-size: 12px; }
+.master-editor-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 16px; align-items: start; }
+.master-editor-grid > :deep(.el-form-item) { min-width: 0; margin-bottom: 16px; }
+.master-editor-wide { grid-column: span 2; }
+.master-editor-full { grid-column: 1 / -1; min-width: 0; }
+@media (max-width: 1200px) { .master-editor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .master-editor-grid { grid-template-columns: minmax(0, 1fr); } .master-editor-wide { grid-column: 1 / -1; } }
 @media (max-width: 760px) { .master-layout { flex-direction: column; } .category-panel { width: 100%; box-sizing: border-box; max-height: 300px; } .master-table { width: 100%; box-sizing: border-box; } }
 </style>

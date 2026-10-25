@@ -110,6 +110,11 @@ func BuildProjection(lines []ReconciliationLine, query req.ReconciliationQuery, 
 	if err != nil {
 		return ReportProjection{}, err
 	}
+	statuses, err := reconciliationStatuses(query.Filters.Statuses)
+	if err != nil {
+		return ReportProjection{}, err
+	}
+	query.Filters.Statuses = statuses
 	matched := filterLines(lines, query.Filters)
 	groups := map[string]*reportGroup{}
 	order := []string{}
@@ -133,7 +138,7 @@ func BuildProjection(lines []ReconciliationLine, query req.ReconciliationQuery, 
 		return ReportProjection{}, sortErr
 	}
 	page := query.PageQuery.WithDefaults()
-	result := ReportProjection{List: rows, Page: page.Page, PageSize: page.PageSize, Total: int64(len(rows)), Columns: columnIDs(columns), Summary: summary(matched, columns), Warnings: []string{"仅统计未删除且已审核送货单的历史快照", "导出、打印按执行时数据重新生成完整结果"}}
+	result := ReportProjection{List: rows, Page: page.Page, PageSize: page.PageSize, Total: int64(len(rows)), Columns: columnIDs(columns), Summary: summary(matched, columns), Warnings: []string{"按所选单据状态统计未删除送货单的历史快照，默认已审核、已复审", "导出、打印按执行时数据重新生成完整结果"}}
 	if paginate {
 		result.List = pageRows(rows, page.Page, page.PageSize)
 	}
@@ -266,10 +271,29 @@ func validateColumns(ids []string) ([]ReportColumn, error) {
 	return result, nil
 }
 
+func reconciliationStatuses(statuses []string) ([]string, error) {
+	if len(statuses) == 0 {
+		return []string{string(DeliveryReviewed), string(DeliveryReReviewed)}, nil
+	}
+	for _, status := range statuses {
+		switch DeliveryStatus(status) {
+		case DeliveryDraft, DeliveryReviewed, DeliveryReReviewed:
+		default:
+			return nil, domainError(ValidationFailed, "单据状态无效", "statuses")
+		}
+	}
+	return statuses, nil
+}
+
 func filterLines(lines []ReconciliationLine, filters req.ReconciliationFilters) []ReconciliationLine {
 	result := []ReconciliationLine{}
+	statuses, _ := reconciliationStatuses(filters.Statuses)
+	selected := make(map[DeliveryStatus]bool, len(statuses))
+	for _, status := range statuses {
+		selected[DeliveryStatus(status)] = true
+	}
 	for _, line := range lines {
-		if line.Deleted || line.Status != DeliveryReviewed {
+		if line.Deleted || !selected[line.Status] {
 			continue
 		}
 		if filters.DeliveredFrom != nil && line.DeliveredAt.Before(*filters.DeliveredFrom) {

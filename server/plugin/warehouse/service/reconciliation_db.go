@@ -31,6 +31,10 @@ func (s *ReconciliationService) Query(ctx context.Context, query req.Reconciliat
 		return ReportProjection{}, domainError(ValidationFailed, "分页参数无效", "page")
 	}
 	f := query.Filters
+	statuses, err := reconciliationStatuses(f.Statuses)
+	if err != nil {
+		return ReportProjection{}, err
+	}
 	if f.DeliveredFrom != nil && f.DeliveredTo != nil && !f.DeliveredFrom.Before(*f.DeliveredTo) {
 		return ReportProjection{}, domainError(ValidationFailed, "送货结束时间必须晚于开始时间", "deliveredTo")
 	}
@@ -38,7 +42,7 @@ func (s *ReconciliationService) Query(ctx context.Context, query req.Reconciliat
 		return ReportProjection{}, domainError(ValidationFailed, "审核结束时间必须晚于开始时间", "reviewedTo")
 	}
 	var result ReportProjection
-	err := s.readSnapshot(ctx, func(lines []ReconciliationLine) error {
+	err = s.readSnapshot(ctx, statuses, func(lines []ReconciliationLine) error {
 		var err error
 		result, err = BuildProjection(lines, query, paginate)
 		return err
@@ -46,14 +50,14 @@ func (s *ReconciliationService) Query(ctx context.Context, query req.Reconciliat
 	return result, err
 }
 
-func (s *ReconciliationService) readSnapshot(ctx context.Context, use func([]ReconciliationLine) error) error {
+func (s *ReconciliationService) readSnapshot(ctx context.Context, statuses []string, use func([]ReconciliationLine) error) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var lines []ReconciliationLine
 		// A single joined statement and a repeatable-read, read-only transaction
 		// keep rows, grouping and summary on one audited-state snapshot.
 		err := tx.Table("wh_delivery_details AS d").
 			Joins("JOIN wh_delivery_notes AS n ON n.id = d.note_id").
-			Where("n.deleted_at IS NULL AND d.deleted_at IS NULL AND n.status = ?", string(DeliveryReviewed)).
+			Where("n.deleted_at IS NULL AND d.deleted_at IS NULL AND n.status IN ?", statuses).
 			Select(`n.id AS note_id, n.delivered_at, n.created_at, n.reviewed_at, n.status,
 			 n.number AS note_number, n.department, n.brand_id, n.brand_code_snapshot AS brand_code, n.brand_name_snapshot AS brand_name,
 			 d.material_id, d.material_code_snapshot AS material_code, d.material_name_snapshot AS material_name,
@@ -76,15 +80,20 @@ type ReportOption struct {
 type ReportOptions struct {
 	Brands     []ReportOption `json:"brands"`
 	Categories []ReportOption `json:"categories"`
+	Departments []string `json:"departments"`
 }
 
 func (s *ReconciliationService) Options(ctx context.Context) (ReportOptions, error) {
-	result := ReportOptions{Brands: []ReportOption{}, Categories: []ReportOption{}}
-	err := s.readSnapshot(ctx, func(lines []ReconciliationLine) error {
+	result := ReportOptions{Brands: []ReportOption{}, Categories: []ReportOption{}, Departments: []string{}}
+	err := s.readSnapshot(ctx, []string{string(DeliveryDraft), string(DeliveryReviewed), string(DeliveryReReviewed)}, func(lines []ReconciliationLine) error {
 		brands, categories := map[ReportOption]bool{}, map[ReportOption]bool{}
+		departments := map[string]bool{}
 		for _, line := range lines {
 			brands[ReportOption{line.BrandID, line.BrandCode, line.BrandName}] = true
 			categories[ReportOption{line.CategoryID, line.CategoryCode, line.CategoryName}] = true
+			if strings.TrimSpace(line.Department) != "" {
+				departments[line.Department] = true
+			}
 		}
 		for item := range brands {
 			result.Brands = append(result.Brands, item)
@@ -92,6 +101,10 @@ func (s *ReconciliationService) Options(ctx context.Context) (ReportOptions, err
 		for item := range categories {
 			result.Categories = append(result.Categories, item)
 		}
+		for department := range departments {
+			result.Departments = append(result.Departments, department)
+		}
+		sort.Strings(result.Departments)
 		less := func(a, b ReportOption) bool {
 			if a.Code != b.Code {
 				return a.Code < b.Code
@@ -128,7 +141,7 @@ func (s *ReconciliationService) Export(ctx context.Context, query req.Reconcilia
 		}
 		return book.SetCellStr(sheet, cell, value)
 	}
-	if err := write(1, 1, "送货对账表（已审核快照）"); err != nil {
+	if err := write(1, 1, "送货对账表（历史快照）"); err != nil {
 		return nil, err
 	}
 	if err := write(2, 1, ReportFilterDescription(query.Filters)); err != nil {
@@ -185,7 +198,13 @@ func (s *ReconciliationService) Export(ctx context.Context, query req.Reconcilia
 }
 
 func ReportFilterDescription(f req.ReconciliationFilters) string {
-	parts := []string{"范围：已审核、未删除；时间区间 [开始,结束)"}
+	statuses, _ := reconciliationStatuses(f.Statuses)
+	labels := map[string]string{"draft": "未审核", "reviewed": "已审核", "reReviewed": "已复审"}
+	names := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		names = append(names, labels[status])
+	}
+	parts := []string{"范围：" + strings.Join(names, "、") + "、未删除；时间区间 [开始,结束)"}
 	if f.DeliveredFrom != nil {
 		parts = append(parts, "送货开始="+f.DeliveredFrom.Format("2006-01-02T15:04:05Z07:00"))
 	}
@@ -203,6 +222,9 @@ func ReportFilterDescription(f req.ReconciliationFilters) string {
 	}
 	if f.CategoryID != nil {
 		parts = append(parts, "类别ID="+decimalID(*f.CategoryID))
+	}
+	if f.Department != "" {
+		parts = append(parts, "部门="+f.Department)
 	}
 	if f.Number != "" {
 		parts = append(parts, "单号包含="+f.Number)

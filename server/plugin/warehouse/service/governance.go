@@ -17,6 +17,8 @@ const (
 	DeliveryDraft DeliveryStatus = "draft"
 	// DeliveryReviewed locks content until an explicit unreview action succeeds.
 	DeliveryReviewed DeliveryStatus = "reviewed"
+	// DeliveryReReviewed must be cancelled before a reviewed note can be unreviewed.
+	DeliveryReReviewed DeliveryStatus = "reReviewed"
 )
 
 // DeliveryAction identifies a stateful delivery command.
@@ -31,6 +33,8 @@ const (
 	DeliveryReview DeliveryAction = "review"
 	// DeliveryUnreview transitions a reviewed note back to draft.
 	DeliveryUnreview DeliveryAction = "unreview"
+	DeliveryReReview DeliveryAction = "reReview"
+	DeliveryCancelReReview DeliveryAction = "cancelReReview"
 )
 
 // DeliveryCommandState is the in-memory command boundary shared by state and
@@ -62,8 +66,12 @@ func ValidateDeliveryAction(status DeliveryStatus, action DeliveryAction) error 
 		if status == DeliveryDraft {
 			return nil
 		}
-	case DeliveryUnreview:
+	case DeliveryUnreview, DeliveryReReview:
 		if status == DeliveryReviewed {
+			return nil
+		}
+	case DeliveryCancelReReview:
+		if status == DeliveryReReviewed {
 			return nil
 		}
 	}
@@ -88,6 +96,12 @@ func PrepareDeliveryCommand(current DeliveryCommandState, requested *uint64, act
 	case DeliveryUnreview:
 		next.Status = DeliveryDraft
 		ClearReviewAudit(&next.Audit, actorID)
+	case DeliveryReReview:
+		next.Status = DeliveryReReviewed
+		ApplyUpdateAudit(&next.Audit, actorID)
+	case DeliveryCancelReReview:
+		next.Status = DeliveryReviewed
+		ApplyUpdateAudit(&next.Audit, actorID)
 	default:
 		ApplyUpdateAudit(&next.Audit, actorID)
 	}
@@ -106,6 +120,14 @@ func ApplyCreateAudit(record *model.BusinessModel, actorID uint, now time.Time) 
 func ApplyUpdateAudit(record *model.BusinessModel, actorID uint) {
 	record.UpdatedBy = actorID
 	record.Version++
+}
+
+// applySavedReview shares the save command's version increment, not a second one.
+func applySavedReview(note *model.DeliveryNote, actor uint, reviewer string, now time.Time) {
+	note.Status = string(DeliveryReviewed)
+	note.ReviewedBy = &actor
+	note.ReviewedAt = &now
+	note.ReviewedByNameSnapshot = stringPointer(reviewer)
 }
 
 // ApplyReviewAudit records the reviewer and increments the version exactly once.

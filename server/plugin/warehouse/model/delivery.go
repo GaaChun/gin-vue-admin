@@ -14,10 +14,12 @@ type DeliveryNote struct {
 	BrandID                uint            `json:"brandId" gorm:"column:brand_id;not null;index:idx_wh_delivery_notes_brand_delivered,priority:1;comment:品牌ID"`
 	BrandCodeSnapshot      string          `json:"brandCodeSnapshot" gorm:"column:brand_code_snapshot;type:varchar(64);not null;comment:品牌编号快照"`
 	BrandNameSnapshot      string          `json:"brandNameSnapshot" gorm:"column:brand_name_snapshot;type:varchar(100);not null;comment:品牌名称快照"`
-	Status                 string          `json:"status" gorm:"column:status;type:varchar(16);not null;index:idx_wh_delivery_notes_status_delivered,priority:1;comment:状态 draft或reviewed"`
+	Status                 string          `json:"status" gorm:"column:status;type:varchar(16);not null;index:idx_wh_delivery_notes_status_delivered,priority:1;comment:状态 draft或reviewed或reReviewed"`
 	TotalAmount            decimal.Decimal `json:"totalAmount" gorm:"column:total_amount;type:decimal(38,2);not null;comment:已舍入明细金额合计"`
 	CreatedByNameSnapshot  string          `json:"createdByNameSnapshot" gorm:"column:created_by_name_snapshot;type:varchar(100);not null;comment:创建人名称快照"`
 	ReviewedByNameSnapshot *string         `json:"reviewedByNameSnapshot,omitempty" gorm:"column:reviewed_by_name_snapshot;type:varchar(100);comment:审核人名称快照"`
+	ReReviewOpinion        *string         `json:"reReviewOpinion" gorm:"column:re_review_opinion;type:text;comment:可空复审意见"`
+	UpdatedByName          string          `json:"updatedByName" gorm:"->;-:migration"`
 }
 func (DeliveryNote) TableName() string { return "wh_delivery_notes" }
 
@@ -41,7 +43,7 @@ type DeliveryDetail struct {
 	Quantity                decimal.Decimal `json:"quantity" gorm:"column:quantity;type:decimal(18,4);not null;comment:数量"`
 	UnitPrice               decimal.Decimal `json:"unitPrice" gorm:"column:unit_price;type:decimal(18,4);not null;comment:单价"`
 	BaseQuantity            decimal.Decimal `json:"baseQuantity" gorm:"column:base_quantity;type:decimal(38,10);not null;comment:数量乘系数，不中途舍入"`
-	Amount                  decimal.Decimal `json:"amount" gorm:"column:amount;type:decimal(38,2);not null;comment:数量乘单价半入金额"`
+	Amount                  decimal.Decimal `json:"amount" gorm:"column:amount;type:decimal(38,2);not null;comment:输入金额或数量乘单价半入金额"`
 }
 func (DeliveryDetail) TableName() string { return "wh_delivery_details" }
 

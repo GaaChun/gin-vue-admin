@@ -13,7 +13,7 @@ func TestWarehouseModelsShareDeletionAuditFields(t *testing.T) {
 		model.Unit{}, model.Brand{}, model.Category{}, model.Material{},
 		model.MaterialUnit{}, model.MaterialImage{}, model.DeliveryNote{},
 		model.DeliveryDetail{}, model.NumberCounter{}, model.NumberReservation{},
-		model.ReportScheme{},
+		model.ReportScheme{}, model.MasterCodeCounter{},
 	}
 	if len(models) != len(warehouseTables()) {
 		t.Fatalf("warehouse model/table coverage mismatch: models=%d tables=%d", len(models), len(warehouseTables()))

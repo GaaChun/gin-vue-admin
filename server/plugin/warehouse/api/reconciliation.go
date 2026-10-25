@@ -34,8 +34,8 @@ func (a ReconciliationAPI) Columns(c *gin.Context) {
 	response.OkWithDetailed(service.ReconciliationColumns(), "操作成功", c)
 }
 
-// Options returns audited historical snapshot filter choices.
-// @Summary 对账历史客户类别候选
+// Options returns historical snapshot filter choices for every selectable state.
+// @Summary 对账历史客户、类别、部门候选
 // @Tags warehouse-reconciliation
 // @Produce json
 // @Success 200 {object} response.Response
@@ -51,7 +51,7 @@ func (a ReconciliationAPI) Options(c *gin.Context) {
 }
 
 // Query returns grouped report rows and global summaries.
-// @Summary 查询已审核送货对账表
+// @Summary 按所选单据状态查询送货对账表
 // @Tags warehouse-reconciliation
 // @Accept json
 // @Produce json

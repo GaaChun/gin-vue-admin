@@ -61,6 +61,10 @@ func (s *DeliveryState) Create(actor uint, in req.CreateDeliveryInput) (model.De
 	note.Status = string(DeliveryDraft)
 	note.CreatedByNameSnapshot = working.names[actor]
 	ApplyCreateAudit(&note.BusinessModel, actor, working.now)
+	note.Department = in.Department
+	if in.Review {
+		applySavedReview(&note, actor, working.names[actor], working.now)
+	}
 	for index := range details {
 		details[index].ID = working.allocate()
 		details[index].NoteID = note.ID
@@ -94,6 +98,10 @@ func (s *DeliveryState) Update(actor uint, in req.UpdateDeliveryInput) (model.De
 	note.Status = current.Status
 	note.CreatedByNameSnapshot = current.CreatedByNameSnapshot
 	ApplyUpdateAudit(&note.BusinessModel, actor)
+	note.Department = in.Department
+	if in.Review {
+		applySavedReview(&note, actor, working.names[actor], working.now)
+	}
 	working.replaceDetails(note.ID, actor, existing, details)
 	working.notes[note.ID] = note
 	*s = *working
@@ -108,6 +116,19 @@ func (s *DeliveryState) Unreview(actor uint, in req.UnreviewDeliveryInput) (mode
 	return s.transition(actor, in.VersionedID, DeliveryUnreview, "")
 }
 
+
+func (s *DeliveryState) ReReview(actor uint, in req.ReReviewDeliveryInput) (model.DeliveryNote, error) {
+	note, err := s.transition(actor, in.VersionedID, DeliveryReReview, "")
+	if err == nil {
+		note.ReReviewOpinion = in.Opinion
+		s.notes[note.ID] = note
+	}
+	return note, err
+}
+
+func (s *DeliveryState) CancelReReview(actor uint, in req.CancelReReviewDeliveryInput) (model.DeliveryNote, error) {
+	return s.transition(actor, in.VersionedID, DeliveryCancelReReview, "")
+}
 func (s *DeliveryState) transition(actor uint, id req.VersionedID, action DeliveryAction, reviewer string) (model.DeliveryNote, error) {
 	current, ok := s.notes[id.ID]
 	if !ok {
@@ -124,6 +145,9 @@ func (s *DeliveryState) transition(actor uint, id req.VersionedID, action Delive
 	}
 	if action == DeliveryUnreview {
 		current.ReviewedByNameSnapshot = nil
+	}
+	if action == DeliveryCancelReReview {
+		current.ReReviewOpinion = nil
 	}
 	s.notes[current.ID] = current
 	return current, nil
@@ -166,7 +190,7 @@ func (s *DeliveryState) composeDetail(noteID, brandID, line uint, input req.Deli
 	if err != nil {
 		return model.DeliveryDetail{}, err
 	}
-	price, err := ParseDecimal(input.UnitPrice, PriceRule, "unitPrice")
+	price, enteredAmount, err := ResolveLinePrice(quantity, input.UnitPrice, input.Amount)
 	if err != nil {
 		return model.DeliveryDetail{}, err
 	}
@@ -179,6 +203,9 @@ func (s *DeliveryState) composeDetail(noteID, brandID, line uint, input req.Deli
 			amounts, err := CalculateLine(quantity, price, old.Factor)
 			if err != nil {
 				return model.DeliveryDetail{}, err
+			}
+			if enteredAmount != nil {
+				amounts.Amount = *enteredAmount
 			}
 			old.Quantity, old.UnitPrice, old.BaseQuantity, old.Amount = quantity, price, amounts.BaseQuantity, amounts.Amount
 			old.LineNo = line
@@ -199,6 +226,9 @@ func (s *DeliveryState) composeDetail(noteID, brandID, line uint, input req.Deli
 	amounts, err := CalculateLine(quantity, price, binding.Factor)
 	if err != nil {
 		return model.DeliveryDetail{}, err
+	}
+	if enteredAmount != nil {
+		amounts.Amount = *enteredAmount
 	}
 	detail := model.DeliveryDetail{NoteID: noteID, LineNo: line, MaterialID: material.ID, MaterialUnitID: binding.ID, UnitID: binding.UnitID, BaseUnitID: base.UnitID, CategoryID: category.ID, MaterialCodeSnapshot: material.Code, MaterialNameSnapshot: material.Name, SpecificationSnapshot: material.Specification, CategoryCodeSnapshot: category.Code, CategoryNameSnapshot: category.Name, UnitNameSnapshot: unit.Name, BaseUnitNameSnapshot: s.units[base.UnitID].Name, Factor: binding.Factor, Quantity: quantity, UnitPrice: price, BaseQuantity: amounts.BaseQuantity, Amount: amounts.Amount}
 	if input.ID != nil {

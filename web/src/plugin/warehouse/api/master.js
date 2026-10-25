@@ -9,6 +9,7 @@ export const saveMaster = (kind, data) => request({ url: `${base}/${kind}/${data
 export const deleteMaster = (kind, data) => request({ url: `${base}/${kind}/delete`, method: 'delete', data })
 export const getCategoryTree = () => request({ url: `${base}/categories/tree`, method: 'get' })
 export const suggestMasterMnemonic = (name) => request({ url: `${base}/mnemonic`, method: 'post', data: { name }, donNotShowLoading: true })
+export const reserveMasterCode = (resource) => request({ url: `${base}/reserveCode`, method: 'post', data: { resource }, donNotShowLoading: true })
 export const uploadMasterImage = (file) => {
   const data = new FormData()
   data.append('file', file)

@@ -1,5 +1,5 @@
-// Package request defines explicit warehouse HTTP input contracts. Server-owned audit,
-// snapshot, status, and computed amount fields are intentionally absent.
+// Package request defines explicit warehouse HTTP input contracts. Server-owned
+// audit, snapshot and status fields are intentionally absent.
 package request
 
 import "time"
@@ -23,6 +23,16 @@ type ReviewDeliveryInput struct {
 
 // UnreviewDeliveryInput requests the reviewed-to-draft delivery action.
 type UnreviewDeliveryInput struct {
+	VersionedID
+}
+
+// ReReviewDeliveryInput applies an optional opinion to a reviewed delivery.
+type ReReviewDeliveryInput struct {
+	VersionedID
+	Opinion *string `json:"opinion"`
+}
+
+type CancelReReviewDeliveryInput struct {
 	VersionedID
 }
 
@@ -142,7 +152,8 @@ type DeliveryDetailInput struct {
 	MaterialID     uint   `json:"materialId" binding:"required,gt=0"`
 	MaterialUnitID uint   `json:"materialUnitId" binding:"required,gt=0"`
 	Quantity       string `json:"quantity" binding:"required"`
-	UnitPrice      string `json:"unitPrice" binding:"required"`
+	UnitPrice      string `json:"unitPrice"`
+	Amount         *string `json:"amount,omitempty"`
 }
 
 type CreateDeliveryInput struct {
@@ -151,16 +162,17 @@ type CreateDeliveryInput struct {
 	Department       string                `json:"department"`
 	BrandID          uint                  `json:"brandId" binding:"required,gt=0"`
 	Details          []DeliveryDetailInput `json:"details" binding:"required,min=1"`
+	Review           bool                  `json:"review"`
 }
 
-// UpdateDeliveryInput replaces editable draft-note content without accepting its
-// number, status, snapshots, audit fields, or calculated values.
+// UpdateDeliveryInput replaces editable draft content and may atomically review it.
 type UpdateDeliveryInput struct {
 	VersionedID
 	DeliveredAt time.Time             `json:"deliveredAt" binding:"required"`
 	Department  string                `json:"department"`
 	BrandID     uint                  `json:"brandId" binding:"required,gt=0"`
 	Details     []DeliveryDetailInput `json:"details" binding:"required,min=1"`
+	Review      bool                  `json:"review"`
 }
 
 // ReportSchemeInput contains writable saved-report configuration only.
@@ -192,6 +204,7 @@ type ReconciliationFilters struct {
 	CategoryID      *uint      `json:"categoryId,omitempty"`
 	Department      string     `json:"department,omitempty"`
 	MaterialKeyword string     `json:"materialKeyword,omitempty"`
+	Statuses        []string   `json:"statuses,omitempty"`
 }
 
 // ReconciliationQuery selects report columns and a page of the shared projection.
@@ -239,6 +252,7 @@ type DeliveryListQuery struct {
 	Status        string     `json:"status,omitempty" form:"status"`
 	Number        string     `json:"number,omitempty" form:"number"`
 	Department    string     `json:"department,omitempty" form:"department"`
+	MaterialIDs   string     `json:"materialIds,omitempty" form:"materialIds"`
 }
 
 // ReportSchemeListQuery filters paginated report schemes.

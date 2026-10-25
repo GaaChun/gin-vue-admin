@@ -2,13 +2,14 @@ export const DISPLAY_SETTING_KEY = 'warehouseDocumentDisplay.delivery'
 
 export const FILTER_FIELDS = [
   { key: 'number', label: '单号' }, { key: 'dates', label: '送货日期' },
-  { key: 'brandId', label: '客户' }, { key: 'department', label: '部门' }, { key: 'status', label: '状态' }
+  { key: 'brandId', label: '客户' }, { key: 'materialIds', label: '物料' }, { key: 'department', label: '部门' }, { key: 'status', label: '状态' }
 ]
 export const LIST_FIELDS = [
   { key: 'number', label: '单号', width: 170 }, { key: 'deliveredAt', label: '送货日期', width: 120 },
   { key: 'brandNameSnapshot', label: '客户', width: 180 }, { key: 'department', label: '部门', width: 120 },
   { key: 'status', label: '状态', width: 100 }, { key: 'totalAmount', label: '金额', width: 130 },
   { key: 'createdByNameSnapshot', label: '创建人', width: 120 }, { key: 'createdAt', label: '创建时间', width: 180 },
+  { key: 'updatedByName', label: '修改人', width: 120 }, { key: 'updatedAt', label: '修改时间', width: 180 },
   { key: 'reviewedByNameSnapshot', label: '审核人', width: 120 }, { key: 'reviewedAt', label: '审核时间', width: 180 }
 ]
 export const DETAIL_FIELDS = [
@@ -35,7 +36,7 @@ function cleanWidths(value, fields) {
 }
 export function normalizeDisplaySettings(raw) {
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
-  const basic = cleanKeys(source.filters?.basic, FILTER_FIELDS, ['number', 'dates', 'brandId'])
+  const basic = cleanKeys(source.filters?.basic, FILTER_FIELDS, ['number', 'dates', 'brandId', 'materialIds'])
   const more = cleanKeys(source.filters?.more, FILTER_FIELDS, ['department', 'status']).filter((key) => !basic.includes(key))
   if (!basic.includes('dates') && !more.includes('dates')) basic.push('dates')
   const detailColumns = cleanKeys(source.detail?.columns, DETAIL_FIELDS, keys(DETAIL_FIELDS))

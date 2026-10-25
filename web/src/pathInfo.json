@@ -93,6 +93,7 @@
   "/src/plugin/auto/view/skills/index.vue": "Index",
   "/src/plugin/email/view/index.vue": "Email",
   "/src/plugin/warehouse/components/delivery-material-picker.vue": "DeliveryMaterialPicker",
+  "/src/plugin/warehouse/components/material-filter.vue": "MaterialFilter",
   "/src/plugin/warehouse/components/report-print-view.vue": "ReportPrintView",
   "/src/plugin/warehouse/components/report-summary.vue": "ReportSummary",
   "/src/plugin/warehouse/view/delivery-display-settings.vue": "DeliveryDisplaySettings",

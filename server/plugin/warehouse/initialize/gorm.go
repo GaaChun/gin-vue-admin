@@ -55,7 +55,7 @@ func migrateWarehouseSchema(db *gorm.DB) error {
 		new(model.Unit), new(model.Brand), new(model.Category), new(model.Material),
 		new(model.MaterialUnit), new(model.MaterialImage), new(model.DeliveryNote),
 		new(model.DeliveryDetail), new(model.NumberCounter), new(model.NumberReservation),
-		new(model.ReportScheme),
+		new(model.ReportScheme), new(model.MasterCodeCounter),
 	); err != nil {
 		return fmt.Errorf("auto-migrate warehouse tables: %w", err)
 	}
@@ -109,7 +109,7 @@ func warehouseTables() []string {
 		"wh_units", "wh_brands", "wh_categories", "wh_materials",
 		"wh_material_units", "wh_material_images", "wh_delivery_notes",
 		"wh_delivery_details", "wh_number_counters", "wh_number_reservations",
-		"wh_report_schemes",
+		"wh_report_schemes", "wh_master_code_counters",
 	}
 }
 

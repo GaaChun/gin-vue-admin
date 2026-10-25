@@ -30,7 +30,7 @@ func (a DeliveryAPI) ReserveNumber(c *gin.Context) {
 }
 
 // CreateDelivery 创建送货单
-// @Summary 创建未审核送货单
+// @Summary 创建送货单，可原子保存并审核
 // @Tags warehouse-delivery
 // @Accept json
 // @Produce json
@@ -41,6 +41,9 @@ func (a DeliveryAPI) ReserveNumber(c *gin.Context) {
 func (a DeliveryAPI) Create(c *gin.Context) {
 	var in req.CreateDeliveryInput
 	if !bind(c, &in) {
+		return
+	}
+	if in.Review && !a.requireReviewPermission(c) {
 		return
 	}
 	v, err := a.service.Create(c, utils.GetUserID(c), utils.GetUserName(c), in)
@@ -65,7 +68,10 @@ func (a DeliveryAPI) Update(c *gin.Context) {
 	if !bind(c, &in) {
 		return
 	}
-	v, err := a.service.Update(c, utils.GetUserID(c), in)
+	if in.Review && !a.requireReviewPermission(c) {
+		return
+	}
+	v, err := a.service.Update(c, utils.GetUserID(c), utils.GetUserName(c), in)
 	if err != nil {
 		a.fail(c, err)
 		return
@@ -136,6 +142,58 @@ func (a DeliveryAPI) Unreview(c *gin.Context) {
 		return
 	}
 	response.OkWithDetailed(v, "操作成功", c)
+}
+
+// ReReviewDelivery 复审已审核送货单
+// @Summary 复审已审核送货单
+// @Tags warehouse-delivery
+// @Accept json
+// @Produce json
+// @Param body body request.ReReviewDeliveryInput true "复审参数"
+// @Success 200 {object} response.Response
+// @Security ApiKeyAuth
+// @Router /warehouse/delivery/reReview [post]
+func (a DeliveryAPI) ReReview(c *gin.Context) {
+	var in req.ReReviewDeliveryInput
+	if !bind(c, &in) {
+		return
+	}
+	v, err := a.service.ReReview(c, utils.GetUserID(c), in)
+	if err != nil {
+		a.fail(c, err)
+		return
+	}
+	response.OkWithDetailed(v, "操作成功", c)
+}
+
+// CancelReReviewDelivery 取消复审送货单
+// @Summary 取消复审送货单
+// @Tags warehouse-delivery
+// @Accept json
+// @Produce json
+// @Param body body request.CancelReReviewDeliveryInput true "取消复审参数"
+// @Success 200 {object} response.Response
+// @Security ApiKeyAuth
+// @Router /warehouse/delivery/cancelReReview [post]
+func (a DeliveryAPI) CancelReReview(c *gin.Context) {
+	var in req.CancelReReviewDeliveryInput
+	if !bind(c, &in) {
+		return
+	}
+	v, err := a.service.CancelReReview(c, utils.GetUserID(c), in)
+	if err != nil {
+		a.fail(c, err)
+		return
+	}
+	response.OkWithDetailed(v, "操作成功", c)
+}
+
+func (a DeliveryAPI) requireReviewPermission(c *gin.Context) bool {
+	if service.CanReviewDelivery(utils.GetUserAuthorityId(c)) {
+		return true
+	}
+	a.fail(c, service.NewDomainError(service.Forbidden, "缺少送货单审核权限"))
+	return false
 }
 
 // DeliveryDetail 查询送货单详情

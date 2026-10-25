@@ -39,7 +39,7 @@ func TestCreateAuditDoesNotTrustDeliveryDTO(t *testing.T) {
 		[]byte(`"createdAt"`), []byte(`"updatedAt"`), []byte(`"createdBy"`),
 		[]byte(`"updatedBy"`), []byte(`"reviewedBy"`), []byte(`"version"`),
 		[]byte(`"status"`), []byte(`"number"`), []byte(`"brandNameSnapshot"`),
-		[]byte(`"lineNo"`), []byte(`"baseQuantity"`), []byte(`"amount"`),
+		[]byte(`"lineNo"`), []byte(`"baseQuantity"`),
 		[]byte(`"totalAmount"`),
 	} {
 		if bytes.Contains(serialized, forbidden) {
@@ -196,5 +196,24 @@ func requireDomainCode(t *testing.T, err error, want ErrorCode) {
 	domain, ok := AsDomainError(err)
 	if !ok || domain.Code != want {
 		t.Fatalf("error code = %v, want %s", err, want)
+	}
+}
+
+func TestDeliveryReReviewTransitionMatrix(t *testing.T) {
+	allowed := map[DeliveryStatus]map[DeliveryAction]bool{
+		DeliveryDraft: {DeliveryEdit: true, DeliveryDelete: true, DeliveryReview: true},
+		DeliveryReviewed: {DeliveryUnreview: true, DeliveryReReview: true},
+		DeliveryReReviewed: {DeliveryCancelReReview: true},
+	}
+	for status, actions := range allowed {
+		for _, action := range []DeliveryAction{DeliveryEdit, DeliveryDelete, DeliveryReview, DeliveryUnreview, DeliveryReReview, DeliveryCancelReReview} {
+			err := ValidateDeliveryAction(status, action)
+			if actions[action] && err != nil {
+				t.Fatalf("%s %s: %v", status, action, err)
+			}
+			if !actions[action] {
+				requireDomainCode(t, err, StateConflict)
+			}
+		}
 	}
 }

@@ -165,3 +165,37 @@ func firstDetail(state *DeliveryState, noteID uint) uint {
 	}
 	return 0
 }
+
+func TestDeliveryStateAtomicReviewAndReReviewOpinion(t *testing.T) {
+	state := deliveryFixture(time.Now())
+	reserved, _ := state.Reserve(4)
+	in := deliveryInput(reserved.Token, "3", "99")
+	amount := "10.00"
+	in.Review, in.Details[0].Amount = true, &amount
+	note, err := state.Create(4, in)
+	if err != nil || note.Status != "reviewed" || note.Version != 1 || note.TotalAmount.StringFixed(2) != "10.00" {
+		t.Fatalf("create=%#v err=%v", note, err)
+	}
+	detail := state.details[firstDetail(state, note.ID)]
+	if detail.UnitPrice.StringFixed(4) != "3.3333" || detail.Amount.StringFixed(2) != amount {
+		t.Fatalf("line=%#v", detail)
+	}
+	opinion := ""
+	reReviewed, err := state.ReReview(4, req.ReReviewDeliveryInput{VersionedID: req.VersionedID{ID: note.ID}, Opinion: &opinion})
+	if err != nil || reReviewed.Status != "reReviewed" || reReviewed.ReReviewOpinion == nil || *reReviewed.ReReviewOpinion != "" {
+		t.Fatalf("empty opinion=%#v err=%v", reReviewed, err)
+	}
+	if _, err := state.Unreview(4, req.UnreviewDeliveryInput{VersionedID: req.VersionedID{ID: note.ID}}); err == nil {
+		t.Fatal("reReviewed note unreviewed")
+	}
+	if _, err := state.CancelReReview(4, req.CancelReReviewDeliveryInput{VersionedID: req.VersionedID{ID: note.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := state.Unreview(4, req.UnreviewDeliveryInput{VersionedID: req.VersionedID{ID: note.ID}})
+	if err != nil { t.Fatal(err) }
+	version := draft.Version
+	updated, err := state.Update(4, req.UpdateDeliveryInput{VersionedID: req.VersionedID{ID: draft.ID, Version: &version}, DeliveredAt: draft.DeliveredAt, BrandID: 1, Details: in.Details, Review: true})
+	if err != nil || updated.Status != "reviewed" || updated.Version != version+1 || updated.ReviewedBy == nil {
+		t.Fatalf("update=%#v err=%v", updated, err)
+	}
+}

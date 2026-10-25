@@ -45,3 +45,11 @@ it('handles leap days, month/year starts and unconfigured defaults', () => {
   expect(getDefaultDateRange('system', now)).toEqual([])
   expect(getDefaultDateRange('unknown', now)).toEqual([])
 })
+
+it('makes modification user and time available to document display settings', () => {
+  expect(LIST_FIELDS).toEqual(expect.arrayContaining([
+    expect.objectContaining({ key: 'updatedByName', label: '修改人' }),
+    expect.objectContaining({ key: 'updatedAt', label: '修改时间' })
+  ]))
+  expect(normalizeDisplaySettings({ list: { columns: ['updatedByName', 'updatedAt'] } }).list.columns).toEqual(['updatedByName', 'updatedAt'])
+})

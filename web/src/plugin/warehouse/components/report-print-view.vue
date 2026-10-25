@@ -16,7 +16,7 @@
               </small>
             </td>
           </tr>
-          <tr v-if="!data.projection.list.length"><td :colspan="columns.length">无符合筛选条件的已审核数据</td></tr>
+          <tr v-if="!data.projection.list.length"><td :colspan="columns.length">无符合筛选条件的数据</td></tr>
         </tbody>
       </table>
       <ReportSummary :summary="data.projection.summary" :columns="data.projection.columns" />

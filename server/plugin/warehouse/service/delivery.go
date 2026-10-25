@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,11 @@ func NewDeliveryService(db *gorm.DB) *DeliveryService {
 }
 
 func DefaultDeliveryService() *DeliveryService { return NewDeliveryService(global.GVA_DB) }
+
+// CanReviewDelivery prevents save-and-review from bypassing the review endpoint's permission.
+func CanReviewDelivery(role uint) bool {
+	return schemeAllowed(role, "/warehouse/delivery/review", "POST")
+}
 
 type DeliveryDetail struct {
 	Note    model.DeliveryNote
@@ -63,6 +69,9 @@ func (s *DeliveryService) Create(ctx context.Context, actor uint, actorName stri
 		note.Status = string(DeliveryDraft)
 		note.CreatedByNameSnapshot = actorName
 		ApplyCreateAudit(&note.BusinessModel, actor, s.now())
+		if in.Review {
+			applySavedReview(&note, actor, actorName, s.now())
+		}
 		if err := tx.Create(&note).Error; err != nil {
 			return err
 		}
@@ -82,7 +91,7 @@ func (s *DeliveryService) Create(ctx context.Context, actor uint, actorName stri
 	return &result, err
 }
 
-func (s *DeliveryService) Update(ctx context.Context, actor uint, in req.UpdateDeliveryInput) (*DeliveryDetail, error) {
+func (s *DeliveryService) Update(ctx context.Context, actor uint, actorName string, in req.UpdateDeliveryInput) (*DeliveryDetail, error) {
 	var result DeliveryDetail
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var current model.DeliveryNote
@@ -111,6 +120,9 @@ func (s *DeliveryService) Update(ctx context.Context, actor uint, in req.UpdateD
 		note.Department = in.Department
 		note.BusinessModel = next.Audit
 		note.Number, note.Status, note.CreatedByNameSnapshot = current.Number, current.Status, current.CreatedByNameSnapshot
+		if in.Review {
+			applySavedReview(&note, actor, actorName, s.now())
+		}
 		if err := tx.Save(&note).Error; err != nil {
 			return err
 		}
@@ -154,19 +166,27 @@ func (s *DeliveryService) Delete(ctx context.Context, actor uint, in req.DeleteI
 }
 
 func (s *DeliveryService) Review(ctx context.Context, actor uint, reviewer string, in req.ReviewDeliveryInput) (*model.DeliveryNote, error) {
-	return s.transitionNote(ctx, actor, in.VersionedID, DeliveryReview, reviewer)
+	return s.transitionNote(ctx, actor, in.VersionedID, DeliveryReview, reviewer, nil)
 }
 
 func (s *DeliveryService) Unreview(ctx context.Context, actor uint, in req.UnreviewDeliveryInput) (*model.DeliveryNote, error) {
-	return s.transitionNote(ctx, actor, in.VersionedID, DeliveryUnreview, "")
+	return s.transitionNote(ctx, actor, in.VersionedID, DeliveryUnreview, "", nil)
+}
+
+func (s *DeliveryService) ReReview(ctx context.Context, actor uint, in req.ReReviewDeliveryInput) (*model.DeliveryNote, error) {
+	return s.transitionNote(ctx, actor, in.VersionedID, DeliveryReReview, "", in.Opinion)
+}
+
+func (s *DeliveryService) CancelReReview(ctx context.Context, actor uint, in req.CancelReReviewDeliveryInput) (*model.DeliveryNote, error) {
+	return s.transitionNote(ctx, actor, in.VersionedID, DeliveryCancelReReview, "", nil)
 }
 
 func (s *DeliveryService) transition(ctx context.Context, actor uint, id req.VersionedID, action DeliveryAction, reviewer string) error {
-	_, err := s.transitionNote(ctx, actor, id, action, reviewer)
+	_, err := s.transitionNote(ctx, actor, id, action, reviewer, nil)
 	return err
 }
 
-func (s *DeliveryService) transitionNote(ctx context.Context, actor uint, id req.VersionedID, action DeliveryAction, reviewer string) (*model.DeliveryNote, error) {
+func (s *DeliveryService) transitionNote(ctx context.Context, actor uint, id req.VersionedID, action DeliveryAction, reviewer string, opinion *string) (*model.DeliveryNote, error) {
 	var result model.DeliveryNote
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&result, id.ID).Error; err != nil {
@@ -191,6 +211,12 @@ func (s *DeliveryService) transitionNote(ctx context.Context, actor uint, id req
 		}
 		if action == DeliveryUnreview {
 			result.ReviewedByNameSnapshot = nil
+		}
+		if action == DeliveryReReview {
+			result.ReReviewOpinion = opinion
+		}
+		if action == DeliveryCancelReReview {
+			result.ReReviewOpinion = nil
 		}
 		if err := tx.Save(&result).Error; err != nil {
 			return err
@@ -240,6 +266,19 @@ func (s *DeliveryService) List(ctx context.Context, query req.DeliveryListQuery)
 	if query.Status != "" {
 		db = db.Where("status = ?", query.Status)
 	}
+	if query.MaterialIDs != "" {
+		var ids []uint
+		for _, raw := range strings.Split(query.MaterialIDs, ",") {
+			id, err := strconv.ParseUint(raw, 10, strconv.IntSize)
+			if err != nil || id == 0 {
+				return result, domainError(ValidationFailed, "物料ID必须为正整数", "materialIds")
+			}
+			ids = append(ids, uint(id))
+		}
+		if len(ids) > 0 {
+			db = db.Where("id IN (SELECT note_id FROM wh_delivery_details WHERE deleted_at IS NULL AND material_id IN ?)", ids)
+		}
+	}
 	if query.Number != "" {
 		db = db.Where("number = ?", query.Number)
 	}
@@ -255,12 +294,15 @@ func (s *DeliveryService) List(ctx context.Context, query req.DeliveryListQuery)
 	order := "delivered_at DESC, id DESC"
 	if query.SortBy != "" || query.SortOrder != "" {
 		var err error
-		order, err = resolveMasterOrder(query.SortQuery, deliverySortColumns())
+		columns := deliverySortColumns()
+		columns["updatedByName"] = "updated_by_name"
+		columns["updatedAt"] = "updated_at"
+		order, err = resolveMasterOrder(query.SortQuery, columns)
 		if err != nil {
 			return result, err
 		}
 	}
-	err := db.Order(order).Offset((query.Page - 1) * query.PageSize).Limit(query.PageSize).Find(&result.List).Error
+	err := db.Select("wh_delivery_notes.*, COALESCE((SELECT nick_name FROM sys_users WHERE sys_users.id = wh_delivery_notes.updated_by), '') AS updated_by_name").Order(order).Offset((query.Page - 1) * query.PageSize).Limit(query.PageSize).Find(&result.List).Error
 	return result, err
 }
 

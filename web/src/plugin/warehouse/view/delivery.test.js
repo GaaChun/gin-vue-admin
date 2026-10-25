@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import Delivery from './delivery.vue'
 import { fmtTitle } from '@/utils/fmtRouterTitle'
 
@@ -122,9 +122,11 @@ it('quick-adds a material found by mnemonic to the delivery rows', async () => {
 it('creates a missing material with a base unit and adds it to the delivery', async () => {
   mocks.allOptions.mockImplementation(async kind => kind === 'units' ? [{ id: 9, name: '千克' }] : [])
   mocks.request.mockImplementation(async ({ url }) => {
+    if (url.endsWith('/reserveCode')) return { code: 'M-GENERATED' }
+    if (url.endsWith('/mnemonic')) return { mnemonic: 'xinwuliao' }
     if (url.endsWith('/materials/create')) return {
       ID: 22,
-      code: 'M-22',
+      code: 'M-GENERATED',
       name: '新物料',
       mnemonic: 'xinwuliao',
       units: [{ ID: 35, unitId: 9, factor: '1', isBase: true, enabled: true }]
@@ -139,17 +141,21 @@ it('creates a missing material with a base unit and adds it to the delivery', as
   } } })
   await flushPromises()
   const state = wrapper.vm.$.setupState
+  state.quickMaterialSearch = '新物料'
   await wrapper.findAll('el-button').find(button => button.text().includes('新建物料并添加')).trigger('click')
   await flushPromises()
   expect(state.quickMaterialDialogOpen).toBe(true)
-  Object.assign(state.quickMaterialForm, { name: '新物料', code: 'M-22', mnemonic: 'xinwuliao', unitId: 9 })
+  expect(state.quickMaterialForm).toMatchObject({ name: '新物料', code: 'M-GENERATED', mnemonic: 'xinwuliao' })
+  expect(mocks.request).toHaveBeenCalledWith({ url: '/warehouse/master/reserveCode', method: 'post', data: { resource: 'materials' }, donNotShowLoading: true })
+  expect(mocks.request).toHaveBeenCalledWith({ url: '/warehouse/master/mnemonic', method: 'post', data: { name: '新物料' }, donNotShowLoading: true })
+  Object.assign(state.quickMaterialForm, { unitId: 9 })
   await state.createQuickMaterial()
   await flushPromises()
 
   expect(mocks.request).toHaveBeenCalledWith({
     url: '/warehouse/master/materials/create',
     method: 'post',
-    data: { name: '新物料', code: 'M-22', mnemonic: 'xinwuliao', units: [{ unitId: 9, factor: '1', isBase: true, enabled: true }] }
+    data: { name: '新物料', code: 'M-GENERATED', mnemonic: 'xinwuliao', units: [{ unitId: 9, factor: '1', isBase: true, enabled: true }] }
   })
   expect(wrapper.text()).toContain('新物料')
 })
@@ -444,6 +450,39 @@ it('sorts displayed detail rows without changing their submitted order and uses 
   expect(update.data.details.map(detail => detail.id)).toEqual([4, 5])
   expect(update.data.details.map(detail => detail.materialId)).toEqual([7, 6])
 })
+it('defaults new material values and calculates editor amount with decimal precision', async () => {
+  mocks.allOptions.mockResolvedValue([])
+  mocks.request.mockImplementation(async ({ url }) => {
+    if (url.endsWith('/list')) return { list: [], total: 0, page: 1, pageSize: 20 }
+    if (url.endsWith('/departments')) return {}
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  wrapper = mount(Delivery, { global: { stubs: {
+    'el-table': { props: ['data'], template: '<div><slot /></div>' },
+    'el-table-column': {
+      props: ['label', 'prop', 'sortable', 'type'],
+      data: () => ({ fakeRow: { keyword: '', units: [], errors: {}, status: 'draft', rowKey: 'test', quantity: '', unitPrice: '', materialCode: '', materialName: '', specification: '', unitName: '' } }),
+      template: '<div><slot :row="fakeRow" /></div>'
+    }
+  } } })
+  await flushPromises()
+  const state = wrapper.vm.$.setupState
+  const row = state.emptyRow()
+  state.applyMaterial(row, {
+    material: { id: 7, code: 'M7', name: '物料七' },
+    bindings: [{ ID: 8, unitId: 9, name: '件', enabled: true, isBase: true }],
+    baseBinding: { ID: 8, unitId: 9, name: '件', enabled: true, isBase: true }
+  })
+  expect(row).toMatchObject({ quantity: '0', unitPrice: '0', amount: '0.00' })
+  expect(state.bindingLabel({ name: '件', isBase: true, enabled: true })).toBe('件')
+  row.quantity = '1.25'
+  row.unitPrice = '2.4'
+  state.clearFieldError(row, 'quantity')
+  expect(row.amount).toBe('3.00')
+  const input = { setSelectionRange: vi.fn() }
+  state.moveCaretToStart({ target: input })
+  expect(input.setSelectionRange).toHaveBeenCalledWith(0, 0)
+})
 it('copies reviewed delivery data into a new draft without copying identities', async () => {
   sessionStorage.removeItem('warehouse.delivery.createDraft')
   mocks.allOptions.mockResolvedValue([])
@@ -483,7 +522,7 @@ it('copies reviewed delivery data into a new draft without copying identities', 
     quantity: '2.5', unitPrice: '12.25', unitsLoaded: false
   })
   expect(draft.rows[0].id).toBeUndefined()
-  expect(draft.rows[0].amount).toBeUndefined()
+  expect(draft.rows[0].amount).toBe('30.63')
   expect(state.note.id).toBe(22)
   expect(mocks.push).toHaveBeenCalledWith({ name: 'warehouseDelivery', query: { whDelivery: '1', whNew: '1' } })
   await state.initializeNew()
@@ -494,4 +533,224 @@ it('copies reviewed delivery data into a new draft without copying identities', 
   expect(state.rows[0]).toMatchObject({ materialId: 7, materialUnitId: 8, quantity: '2.5', unitPrice: '12.25' })
   expect(state.rows[0].id).toBeUndefined()
   expect(mocks.request).toHaveBeenCalledWith({ url: '/warehouse/delivery/reserveNumber', method: 'post' })
+})
+
+async function mountEditableDelivery(status = 'draft') {
+  mocks.allOptions.mockImplementation(async kind => kind === 'brands' ? [{ id: 2, name: '客户甲', code: 'KH2' }] : [])
+  mocks.request.mockImplementation(async ({ url, data }) => {
+    if (url === '/warehouse/delivery/detail') return {
+      note: { id: 10, version: 3, number: 'SK10', status, brandId: 2, deliveredAt: '2026-01-01T00:00:00Z' },
+      details: [
+        { id: 1, materialId: 7, materialUnitId: 8, unitId: 9, quantity: '3', unitPrice: '0.3333', amount: '1.00', materialCodeSnapshot: 'M7', unitNameSnapshot: '件' },
+        { id: 2, materialId: 7, materialUnitId: 8, unitId: 9, quantity: '1', unitPrice: '0.1', amount: '0.10', materialCodeSnapshot: 'M7', unitNameSnapshot: '件' }
+      ]
+    }
+    if (url.endsWith('/list')) return { list: [], total: 0, page: 1, pageSize: 20 }
+    if (url.endsWith('/departments')) return ['采购部', '仓库']
+    if (url.endsWith('/reReview')) return { id: 10, status: 'reReviewed', reReviewOpinion: data.opinion }
+    if (url.endsWith('/update') || url.endsWith('/create')) return {}
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  wrapper = mount(Delivery, { global: { stubs: {
+    'el-table': { props: ['data'], template: '<div><slot /></div>' },
+    'el-table-column': { template: '<div />' },
+    'el-dialog': { props: ['modelValue'], template: '<div v-if="modelValue"><slot /><slot name="footer" /></div>' }
+  } } })
+  await flushPromises()
+  return wrapper.vm.$.setupState
+}
+
+it('saves edited content and reviews atomically through update', async () => {
+  const state = await mountEditableDelivery()
+  state.rows[0].quantity = '4'
+  state.clearFieldError(state.rows[0], 'quantity')
+  await wrapper.findAll('el-button').find(button => button.text().trim() === '审核').trigger('click')
+  await flushPromises()
+  const update = mocks.request.mock.calls.map(([arg]) => arg).find(arg => arg.url.endsWith('/update'))
+  expect(update.data.review).toBe(true)
+  expect(update.data.details[0].quantity).toBe('4')
+  expect(mocks.request.mock.calls.some(([arg]) => arg.url.endsWith('/review'))).toBe(false)
+})
+
+it('rounds line money before summing and derives unit price exactly from editable amount', async () => {
+  const state = await mountEditableDelivery()
+  const row = state.rows[0]
+  row.quantity = '3'
+  row.amount = '10.00'
+  state.clearFieldError(row, 'amount')
+  expect(row.unitPrice).toBe('3.3333')
+  expect(state.validatedDetails()[0].amount).toBe('10.00')
+  expect(state.tableSummary({ columns: [{}, { property: 'amount' }] })).toEqual(['合计', '10.10'])
+  row.unitPrice = '0.335'
+  state.clearFieldError(row, 'unitPrice')
+  expect(row.amount).toBe('1.01')
+  expect(state.validatedDetails()[0].amount).toBeUndefined()
+  expect(state.calculateAmount('99999999999999.9999', '0.0001')).toBe('10000000000.00')
+})
+
+it('keeps exactly one active row and removes selected lines only locally after confirmation', async () => {
+  const state = await mountEditableDelivery()
+  const [first, second] = state.rows
+  await state.activateRow(first)
+  expect(state.activeRowKey).toBe(first.rowKey)
+  await state.focusCell(second, 'quantity')
+  expect(state.activeRowKey).toBe(second.rowKey)
+  state.handleEditorPointerDown({ target: document.body })
+  expect(state.activeRowKey).toBe('')
+  state.detailSelectionChanged([first])
+  ElMessageBox.confirm.mockRejectedValueOnce('cancel')
+  await state.removeSelectedRows()
+  expect(state.rows).toHaveLength(2)
+  await state.removeSelectedRows()
+  expect(state.rows.map(row => row.id)).toEqual([2])
+  expect(mocks.request.mock.calls.some(([arg]) => /\/(delete|update)$/.test(arg.url))).toBe(false)
+})
+
+it('collects optional review opinion and blocks unreview until rereview is cancelled', async () => {
+  const state = await mountEditableDelivery('reviewed')
+  await wrapper.findAll('el-button').find(button => button.text().trim() === '复审').trigger('click')
+  expect(state.reReviewDialog.open).toBe(true)
+  state.reReviewDialog.opinion = '核对无误'
+  await state.confirmReReview()
+  expect(mocks.request).toHaveBeenCalledWith({
+    url: '/warehouse/delivery/reReview', method: 'post', data: { id: 10, version: 3, opinion: '核对无误' }
+  })
+  await flushPromises()
+  expect(wrapper.find('.delivery-detail-footer').text()).toContain('取消复审')
+  expect(wrapper.find('.delivery-detail-footer').text()).not.toContain('反审核')
+  expect(wrapper.find('.editor-header el-input[type="textarea"]').attributes('model-value')).toBe('核对无误')
+})
+
+it('saves and reviews a new delivery in one create request', async () => {
+  const state = await mountEditableDelivery()
+  state.note = {}
+  state.reservation.token = 'new-token'
+  await state.save(false, true)
+  expect(mocks.request).toHaveBeenCalledWith(expect.objectContaining({
+    url: '/warehouse/delivery/create', method: 'post',
+    data: expect.objectContaining({ reservationToken: 'new-token', review: true })
+  }))
+})
+
+it('batch rereviews only reviewed notes with one shared opinion and their versions', async () => {
+  const state = await mountEditableDelivery()
+  const reviewed = { id: 20, version: 8, status: 'reviewed' }
+  const draft = { id: 21, version: 9, status: 'draft' }
+  state.openReReview([reviewed, draft], true)
+  expect(state.reReviewDialog.targets).toEqual([reviewed])
+  state.reReviewDialog.opinion = '批量核对'
+  await state.confirmReReview()
+  expect(mocks.request).toHaveBeenCalledWith({
+    url: '/warehouse/delivery/reReview', method: 'post', data: { id: 20, version: 8, opinion: '批量核对' }
+  })
+})
+
+it('does not submit batch deletion when cancelled and explains mixed selection', async () => {
+  const state = await mountEditableDelivery()
+  state.selectionChanged([{ id: 20, version: 8, status: 'draft' }, { id: 21, version: 9, status: 'reviewed' }, { id: 22, version: 1, status: 'reReviewed' }])
+  ElMessageBox.confirm.mockRejectedValueOnce('cancel')
+  await state.batchTransition('delete')
+  expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+    '确定删除选中的 1 张未审核送货单？另有 2 张已审核或已复审单据不会删除。此操作不可恢复。',
+    '删除确认', expect.any(Object)
+  )
+  expect(mocks.request.mock.calls.some(([arg]) => arg.url.endsWith('/delete'))).toBe(false)
+})
+
+it('batch deletes only drafts with versions and refreshes after partial success', async () => {
+  const state = await mountEditableDelivery()
+  state.selectionChanged([
+    { id: 20, version: 8, status: 'draft' }, { id: 21, version: 9, status: 'reviewed' },
+    { id: 22, version: 10, status: 'draft' }, { id: 23, version: 11, status: 'reReviewed' }
+  ])
+  mocks.request.mockImplementation(async ({ url, data }) => {
+    if (url.endsWith('/delete')) {
+      if (data.id === 22) throw new Error('版本冲突')
+      return {}
+    }
+    if (url.endsWith('/list')) return { list: [], total: 0, page: 1, pageSize: 20 }
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  await state.batchTransition('delete')
+  const deletions = mocks.request.mock.calls.map(([arg]) => arg).filter(arg => arg.url.endsWith('/delete'))
+  expect(deletions).toEqual([
+    { url: '/warehouse/delivery/delete', method: 'delete', data: { id: 20, version: 8 } },
+    { url: '/warehouse/delivery/delete', method: 'delete', data: { id: 22, version: 10 } }
+  ])
+  expect(ElMessage.warning).toHaveBeenCalledWith('已删除 1 张，其余未完成；请刷新后重试')
+  expect(state.selectedNotes).toEqual([])
+  expect(mocks.request.mock.calls.at(-1)[0].url).toBe('/warehouse/delivery/list')
+})
+
+it('selects first customer and department on Enter and rejects IME confirmation', async () => {
+  const state = await mountEditableDelivery()
+  const event = { preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() }
+  state.form.brandId = undefined
+  state.selectFirstBrand({ ...event, isComposing: true })
+  expect(state.form.brandId).toBeUndefined()
+  state.selectFirstBrand(event)
+  expect(state.form.brandId).toBe(2)
+  state.form.department = ''
+  state.selectFirstDepartment(event)
+  expect(state.form.department).toBe('采购部')
+  expect(event.preventDefault).toHaveBeenCalledTimes(2)
+})
+
+it('preserves normal rounded prices and rehydrates only unmatched saved amount overrides', async () => {
+  const state = await mountEditableDelivery()
+  await state.readAggregate({
+    note: { id: 10, status: 'draft', brandId: 2, deliveredAt: '2026-01-01T00:00:00Z' },
+    details: [
+      { id: 1, materialId: 7, materialUnitId: 8, quantity: '0.3333', unitPrice: '0.05', amount: '0.02' },
+      { id: 2, materialId: 7, materialUnitId: 8, quantity: '999999', unitPrice: '0.0000', amount: '0.01' }
+    ]
+  })
+  const details = state.validatedDetails()
+  expect(details[0]).toMatchObject({ unitPrice: '0.05' })
+  expect(details[0].amount).toBeUndefined()
+  expect(details[1].amount).toBe('0.01')
+})
+
+it('activates the next row on line completion', async () => {
+  const state = await mountEditableDelivery()
+  const row = state.rows[0]
+  const enter = { key: 'Enter', preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() }
+  row.amount = '0.00'
+  state.cellKeydown(enter, row, 'amount')
+  await flushPromises()
+  expect(state.activeRowKey).toBe(state.rows[1].rowKey)
+  expect(state.bindingLabel({ name: '件', enabled: false })).toBe('件')
+})
+
+it('cancels rereview with the current version before offering unreview', async () => {
+  const state = await mountEditableDelivery('reReviewed')
+  const requestsBefore = mocks.request.mock.calls.length
+  await state.transition(state.note, 'unreview')
+  expect(mocks.request.mock.calls).toHaveLength(requestsBefore)
+  mocks.request.mockImplementation(async ({ url }) => {
+    if (url.endsWith('/cancelReReview')) return { id: 10, version: 4, status: 'reviewed', number: 'SK10' }
+    if (url.endsWith('/list')) return { list: [], total: 0, page: 1, pageSize: 20 }
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  await state.transition(state.note, 'cancelReReview')
+  expect(mocks.request).toHaveBeenCalledWith({ url: '/warehouse/delivery/cancelReReview', method: 'post', data: { id: 10, version: 3 } })
+  expect(state.note.status).toBe('reviewed')
+  await flushPromises()
+  expect(wrapper.find('.delivery-detail-footer').text()).toContain('反审核')
+})
+
+it('restores draft rows with unique keys so newly added rows cannot share editing state', async () => {
+  const state = await mountEditableDelivery()
+  sessionStorage.setItem('warehouse.delivery.createDraft', JSON.stringify({
+    form: { brandId: 2, department: '', deliveredAt: '2026-01-01' },
+    reservation: { number: 'SKNEW', token: 'reserved' },
+    rows: [{ ...state.emptyRow(), rowKey: 'delivery-row-1', materialId: 7 }]
+  }))
+  await state.initializeNew()
+  state.addBlankRow()
+  await flushPromises()
+  expect(new Set(state.rows.map(row => row.rowKey)).size).toBe(state.rows.length)
+  expect(state.activeRowKey).toBe(state.rows.at(-1).rowKey)
+  sessionStorage.removeItem('warehouse.delivery.createDraft')
+  state.editorOpen = false
 })

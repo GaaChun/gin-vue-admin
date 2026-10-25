@@ -10,6 +10,7 @@ import (
 func Api(_ context.Context) {
 	entities := []model.SysApi{
 		api("POST", "/warehouse/master/mnemonic", "生成助记符建议"),
+		api("POST", "/warehouse/master/reserveCode", "预占基础资料流水编号"),
 		api("GET", "/warehouse/master/categories/tree", "查询类别树"),
 		api("POST", "/warehouse/master/materials/uploadImage", "上传物料图片"),
 		api("POST", "/warehouse/delivery/reserveNumber", "预占送货单号"),
@@ -18,6 +19,8 @@ func Api(_ context.Context) {
 		api("DELETE", "/warehouse/delivery/delete", "删除送货单"),
 		api("POST", "/warehouse/delivery/review", "审核送货单"),
 		api("POST", "/warehouse/delivery/unreview", "反审核送货单"),
+		api("POST", "/warehouse/delivery/reReview", "复审送货单"),
+		api("POST", "/warehouse/delivery/cancelReReview", "取消复审送货单"),
 		api("GET", "/warehouse/delivery/list", "查询送货单"),
 		api("GET", "/warehouse/delivery/departments", "查询历史部门候选"),
 		api("GET", "/warehouse/delivery/detail", "查询送货单详情"),
