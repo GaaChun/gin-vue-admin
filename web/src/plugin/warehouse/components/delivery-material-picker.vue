@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="批量选择物料"
+    title="选择物料"
     width="94%"
     :close-on-click-modal="false"
     :close-on-press-escape="!loading"

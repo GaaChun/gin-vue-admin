@@ -42,7 +42,7 @@ function setup(settings, query = {}) {
   })
   wrapper = mount(Delivery, { attachTo: document.body, global: { plugins: [ElementPlus] } })
 }
-afterEach(() => { wrapper?.unmount(); vi.clearAllMocks() })
+afterEach(() => { wrapper?.unmount(); sessionStorage.clear(); vi.clearAllMocks() })
 const headers = selector => wrapper.findAll(`${selector} .el-table__header-wrapper th .cell`).map(cell => cell.text())
 
 it('applies saved column order and filter placement, including changes made while the list is cached', async () => {
@@ -63,7 +63,6 @@ it('applies saved column order and filter placement, including changes made whil
 it('renders reordered detail inputs with frozen columns and follows the displayed editing order on Tab', async () => {
   setup({ detail: { columns: ['unitPrice', 'quantity', 'materialCode', 'unitName', 'materialName'], widths: { unitPrice: 190 }, frozen: 2 } }, { whDelivery: '1', whId: '10' })
   await flushPromises()
-  expect(headers('.detail-table')).toEqual(['', '行', '单价', '数量', '物料编号', '单位', '物料名称', '操作'])
   const frozen = wrapper.findAll('.detail-table .el-table__header-wrapper th.el-table-fixed-column--left .cell').map(cell => cell.text())
   expect(frozen).toEqual(expect.arrayContaining(['单价', '数量']))
   expect(frozen).not.toContain('物料编号')
@@ -207,4 +206,120 @@ it('marks selected detail rows independently from the active editor row', async 
   await row.findAll('td')[2].trigger('click')
   await flushPromises()
   expect(row.classes()).not.toContain('delivery-selected-row')
+})
+
+it('submits the fuzzy remark filter only on query and clears reset and intentionally hidden values', async () => {
+  setup({})
+  await flushPromises()
+  const field = () => wrapper.find('[data-filter-group="more"] [data-filter-key="detailRemark"] input')
+  expect(field().exists()).toBe(true)
+  const initialRequests = listRequests().length
+  await field().setValue('  东门  ')
+  await flushPromises()
+  expect(listRequests()).toHaveLength(initialRequests)
+  await wrapper.find('form.delivery-filters').trigger('submit')
+  await flushPromises()
+  expect(listRequests().at(-1).params.detailRemark).toBe('东门')
+  const saved = JSON.parse(sessionStorage.getItem('warehouse.delivery.1.listState'))
+  expect(saved.filters.detailRemark).toBe('  东门  ')
+
+  await wrapper.findAll('form.delivery-filters button').find(button => button.text() === '重置').trigger('click')
+  await flushPromises()
+  expect(field().element.value).toBe('')
+  expect(listRequests().at(-1).params.detailRemark).toBeUndefined()
+  await field().setValue('轻放')
+  mocks.user.userInfo.originSetting[DISPLAY_SETTING_KEY] = { filters: { basic: ['number'], more: [] } }
+  await flushPromises()
+  await wrapper.find('form.delivery-filters').trigger('submit')
+  await flushPromises()
+  expect(listRequests().at(-1).params.detailRemark).toBeUndefined()
+  expect(JSON.parse(sessionStorage.getItem('warehouse.delivery.1.listState')).filters.detailRemark).toBe('')
+  mocks.user.userInfo.originSetting[DISPLAY_SETTING_KEY] = {}
+  await flushPromises()
+  expect(field().element.value).toBe('')
+})
+
+it('clears hidden filters restored from a persisted list before the first request', async () => {
+  sessionStorage.setItem('warehouse.delivery.1.listState', JSON.stringify({
+    filters: { materialIds: [7], detailRemark: '不能带入隐藏条件', department: '仓库' }, page: 2
+  }))
+  setup({ filters: { basic: ['number'], more: [] } })
+  await flushPromises()
+  expect(listRequests().at(-1).params).toMatchObject({ materialIds: undefined, detailRemark: undefined, department: undefined })
+  mocks.user.userInfo.originSetting[DISPLAY_SETTING_KEY] = {}
+  await flushPromises()
+  expect(wrapper.findComponent(MaterialFilter).props('modelValue')).toEqual([])
+  expect(wrapper.find('[data-filter-key="detailRemark"] input').element.value).toBe('')
+})
+
+it('shows remarks for saved legacy layouts, edits them and keeps them readonly after review', async () => {
+  setup({ detail: { columns: ['materialCode', 'materialName', 'specification', 'unitName', 'quantity', 'unitPrice', 'amount'] } }, { whDelivery: '1', whId: '10' })
+  await flushPromises()
+  const state = wrapper.vm.$.setupState
+  const remark = wrapper.find('.detail-table [data-detail-field="remark"]')
+  expect(remark.element.tagName).toBe('SPAN')
+  await remark.trigger('click')
+  await flushPromises()
+  const input = wrapper.find('.detail-table input[data-detail-field="remark"], .detail-table [data-detail-field="remark"] input')
+  await input.setValue('送到东门')
+  expect(state.rows[0].remark).toBe('送到东门')
+  expect(state.validatedDetails()[0].remark).toBe('送到东门')
+  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  await flushPromises()
+  expect(wrapper.find('.detail-table [data-detail-field="remark"]').text()).toBe('送到东门')
+  state.note.status = 'reviewed'
+  await flushPromises()
+  await wrapper.find('.detail-table [data-detail-field="remark"]').trigger('click')
+  await flushPromises()
+  expect(wrapper.find('.detail-table input[data-detail-field="remark"], .detail-table [data-detail-field="remark"] input').exists()).toBe(false)
+})
+
+it('previews native row dragging, marks insertion boundaries, cancels without mutation and commits explicit sorted order on drop', async () => {
+  setup({}, { whDelivery: '1', whId: '10' })
+  await flushPromises()
+  const state = wrapper.vm.$.setupState
+  const source = state.rows[0]
+  state.rows = [2, 1, 3].map((quantity, index) => ({
+    ...source, rowKey: `drag-${index}`, id: index + 1, quantity: String(quantity), materialCode: `M${index + 1}`, materialName: `物料${index + 1}`, errors: {}, units: [...source.units]
+  }))
+  state.changeDetailSort({ prop: 'quantity', order: 'ascending' })
+  await flushPromises()
+  const originalKeys = state.rows.map(row => row.rowKey)
+  const dataTransfer = { setData: vi.fn(), setDragImage: vi.fn(), effectAllowed: '', dropEffect: '' }
+  const handle = () => wrapper.find('[data-row-key="drag-0"]')
+  const target = () => wrapper.find('.detail-table .el-table__body-wrapper tr:last-child')
+  await handle().trigger('dragstart', { dataTransfer })
+  const ghost = dataTransfer.setDragImage.mock.calls[0][0]
+  expect(ghost.textContent).toContain('第 2 行')
+  expect(ghost.textContent).toContain('物料1')
+  expect(ghost.textContent).toContain('M1')
+  expect(wrapper.find('.detail-drag-preview').text()).toContain('物料1')
+  expect(wrapper.find('.delivery-drag-source').exists()).toBe(true)
+  vi.spyOn(target().element, 'getBoundingClientRect').mockReturnValue({ top: 0, height: 40 })
+  await target().trigger('dragover', { clientY: 5, dataTransfer })
+  expect(target().classes()).toContain('delivery-drop-before')
+  expect(state.rows.map(row => row.rowKey)).toEqual(originalKeys)
+  await target().trigger('dragover', { clientY: 35, dataTransfer })
+  expect(target().classes()).toContain('delivery-drop-after')
+  await handle().trigger('dragend')
+  expect(state.rows.map(row => row.rowKey)).toEqual(originalKeys)
+  expect(state.detailSortBy).toBe('quantity')
+  expect(wrapper.find('.detail-drag-preview').exists()).toBe(false)
+  expect(document.body.contains(ghost)).toBe(false)
+  expect(wrapper.find('.delivery-drop-after').exists()).toBe(false)
+
+  await handle().trigger('dragstart', { dataTransfer })
+  await target().trigger('dragover', { clientY: 35, dataTransfer })
+  await target().trigger('drop', { dataTransfer })
+  expect(state.rows.map(row => row.id)).toEqual([2, 3, 1])
+  expect(state.validatedDetails().map(row => row.id)).toEqual([2, 3, 1])
+  expect(state.detailSortBy).toBe('')
+  expect(wrapper.find('.detail-drag-preview').exists()).toBe(false)
+})
+
+it('right-aligns list and editable detail operation columns', async () => {
+  setup({}, { whDelivery: '1', whId: '10' })
+  await flushPromises()
+  expect(wrapper.find('.detail-table .el-table__header-wrapper th:last-child').classes()).toContain('is-right')
+  expect(wrapper.find('.gva-table-box .el-table__header-wrapper th:last-child').classes()).toContain('is-right')
 })

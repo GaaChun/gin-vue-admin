@@ -3,7 +3,7 @@ import { DETAIL_FIELDS, LIST_FIELDS, getDefaultDateRange, normalizeDisplaySettin
 
 it('defaults to supported fields and preserves legacy user column order including an empty list', () => {
   expect(normalizeDisplaySettings().list.columns).toEqual(LIST_FIELDS.map(field => field.key))
-  expect(normalizeDisplaySettings(['status', 'number', 'status', 'stock'])).toEqual(expect.objectContaining({ list: { columns: ['status', 'number'], widths: {} } }))
+  expect(normalizeDisplaySettings(['status', 'number', 'status', 'stock']).list.columns).toEqual(['status', 'number'])
   expect(normalizeDisplaySettings([]).list.columns).toEqual([])
 })
 it('deduplicates groups, retains required date and detail fields, and bounds widths and freezing', () => {
@@ -14,7 +14,7 @@ it('deduplicates groups, retains required date and detail fields, and bounds wid
   })
   expect(result.dateDefault).toBe('system')
   expect(result.filters).toEqual({ basic: ['status', 'dates'], more: ['number'] })
-  expect(result.list).toEqual({ columns: [], widths: { number: 80, status: 800 } })
+  expect(result.list).toMatchObject({ columns: [], widths: { number: 80, status: 800 } })
   expect(result.detail.columns).toEqual(['amount', ...DETAIL_FIELDS.filter(field => field.required).map(field => field.key)])
   expect(result.detail.widths).toEqual({ amount: 101 })
   expect(result.detail.frozen).toBe(result.detail.columns.length)
@@ -52,4 +52,22 @@ it('makes modification user and time available to document display settings', ()
     expect.objectContaining({ key: 'updatedAt', label: '修改时间' })
   ]))
   expect(normalizeDisplaySettings({ list: { columns: ['updatedByName', 'updatedAt'] } }).list.columns).toEqual(['updatedByName', 'updatedAt'])
+})
+
+it('preserves an explicitly hidden action column through normalization and unrelated width changes', () => {
+  const settings = normalizeDisplaySettings({ list: { showActions: false } })
+  settings.list.widths.number = 220
+  expect(normalizeDisplaySettings(settings).list.showActions).toBe(false)
+  expect(normalizeDisplaySettings({ list: { showActions: true } }).list.showActions).toBe(true)
+})
+
+it('backfills detail remarks into saved legacy columns and defaults their filter to more conditions', () => {
+  const settings = normalizeDisplaySettings()
+  expect(settings.detail.columns).toContain('remark')
+  expect(settings.filters.basic).not.toContain('detailRemark')
+  expect(settings.filters.more).toContain('detailRemark')
+  const custom = normalizeDisplaySettings({ detail: { columns: ['quantity'] }, filters: { basic: ['detailRemark'], more: [] } })
+  expect(custom.detail.columns).toContain('remark')
+  expect(custom.filters.basic).toContain('detailRemark')
+  expect(custom.filters.more).not.toContain('detailRemark')
 })

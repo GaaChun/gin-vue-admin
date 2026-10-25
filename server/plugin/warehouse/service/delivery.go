@@ -279,6 +279,9 @@ func (s *DeliveryService) List(ctx context.Context, query req.DeliveryListQuery)
 			db = db.Where("id IN (SELECT note_id FROM wh_delivery_details WHERE deleted_at IS NULL AND material_id IN ?)", ids)
 		}
 	}
+	if query.DetailRemark != "" {
+		db = db.Where("id IN (SELECT note_id FROM wh_delivery_details WHERE deleted_at IS NULL AND remark LIKE ?)", "%"+query.DetailRemark+"%")
+	}
 	if query.Number != "" {
 		db = db.Where("number = ?", query.Number)
 	}

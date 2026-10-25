@@ -44,6 +44,7 @@ type DeliveryDetail struct {
 	UnitPrice               decimal.Decimal `json:"unitPrice" gorm:"column:unit_price;type:decimal(18,4);not null;comment:单价"`
 	BaseQuantity            decimal.Decimal `json:"baseQuantity" gorm:"column:base_quantity;type:decimal(38,10);not null;comment:数量乘系数，不中途舍入"`
 	Amount                  decimal.Decimal `json:"amount" gorm:"column:amount;type:decimal(38,2);not null;comment:输入金额或数量乘单价半入金额"`
+	Remark                  string          `json:"remark" gorm:"column:remark;type:text;comment:明细备注"`
 }
 func (DeliveryDetail) TableName() string { return "wh_delivery_details" }
 

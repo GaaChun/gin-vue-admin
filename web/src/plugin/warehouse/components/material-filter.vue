@@ -1,16 +1,23 @@
 <template>
-  <div class="material-filter">
-    <el-popover v-model:visible="open" trigger="click" placement="bottom-start" :width="360" @show="keyword = ''">
+  <div v-click-outside="closeOnOutside" class="material-filter">
+    <el-popover :visible="open" :trigger="[]" :trigger-keys="[]" placement="bottom-start" :width="360" @after-enter="focusSearch" @after-leave="closing = false">
       <template #reference>
-        <el-input :model-value="summary" readonly placeholder="选择物料" aria-label="筛选物料" :aria-expanded="open" @keydown.esc="open = false" @keydown.enter.prevent="open = !open" @keydown.space.prevent="open = !open">
-          <template #suffix>
-            <button v-if="modelValue.length" type="button" class="material-filter-clear" aria-label="清空物料筛选" @click.stop="clearSelection">×</button>
-            <span class="material-filter-arrow" aria-hidden="true">▾</span>
-          </template>
-        </el-input>
+        <div class="material-filter-reference">
+          <el-tooltip :disabled="open || !selectedMaterials.length" :trigger-keys="[]" :show-after="200" placement="top" popper-class="material-filter-selection-tooltip">
+            <template #content>
+              <div v-for="material in selectedMaterials" :key="idOf(material)" class="material-filter-selection">{{ material.name }}（{{ material.code }}）</div>
+            </template>
+            <el-input :model-value="summary" readonly placeholder="选择物料" aria-label="筛选物料" :aria-expanded="open" @focus="focusReference" @click="openFilter" @keydown.esc.stop="closeFilter" @keydown.enter.prevent.stop="openFilter" @keydown.space.prevent.stop="openFilter">
+              <template #suffix>
+                <button v-if="modelValue.length" type="button" class="material-filter-clear" aria-label="清空物料筛选" @mousedown.prevent @keydown.stop @click.stop="clearSelection">×</button>
+                <span class="material-filter-arrow" aria-hidden="true">▾</span>
+              </template>
+            </el-input>
+          </el-tooltip>
+        </div>
       </template>
-      <div class="material-filter-panel">
-        <el-input v-model="keyword" class="material-filter-search" clearable placeholder="搜索物料名称、编号或助记符" aria-label="搜索物料" @keydown.esc="open = false" />
+      <div ref="panel" class="material-filter-panel" @keydown.esc.stop="closeFilter">
+        <el-input ref="searchInput" v-model="keyword" class="material-filter-search" clearable placeholder="搜索物料名称、编号或助记符" aria-label="搜索物料" @keydown.esc.stop="closeFilter" />
         <div class="material-filter-actions">
           <button type="button" class="material-filter-select-all" :disabled="!candidates.length" @click="selectAll">全选当前可见</button>
           <button type="button" class="material-filter-deselect-all" :disabled="!modelValue.length" @click="clearSelection">取消全选</button>
@@ -29,7 +36,8 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
+import { ClickOutside as vClickOutside } from 'element-plus'
 import { idOf } from '../api/common'
 
 const props = defineProps({
@@ -38,13 +46,39 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue'])
 const open = ref(false)
+const closing = ref(false)
 const keyword = ref('')
+const searchInput = ref(null)
+const panel = ref(null)
 const selectedIds = computed(() => new Set(props.modelValue))
 const summary = computed(() => props.modelValue.length ? `已选 ${props.modelValue.length} 种物料` : '')
+const selectedMaterials = computed(() => props.materials.filter(material => selectedIds.value.has(idOf(material))))
 const candidates = computed(() => {
   const search = keyword.value.trim().toLocaleLowerCase()
   return props.materials.filter((material) => !search || [material.name, material.code, material.mnemonic].some((value) => String(value || '').toLocaleLowerCase().includes(search)))
 })
+async function focusSearch() {
+  await nextTick()
+  if (open.value) searchInput.value?.focus()
+}
+function openFilter() {
+  closing.value = false
+  if (!open.value) keyword.value = ''
+  open.value = true
+  focusSearch()
+}
+function focusReference() {
+  // The popover restores reference focus while closing; that must not reopen it.
+  if (!closing.value) openFilter()
+}
+function closeFilter() {
+  if (!open.value) return
+  closing.value = true
+  open.value = false
+}
+function closeOnOutside(event) {
+  if (!panel.value?.contains(event.target)) closeFilter()
+}
 function toggle(material) {
   const id = idOf(material)
   emit('update:modelValue', selectedIds.value.has(id) ? props.modelValue.filter((value) => value !== id) : [...props.modelValue, id])
@@ -62,6 +96,7 @@ function clearSelection() { emit('update:modelValue', []) }
 .material-filter-clear:hover { color: var(--el-color-primary); }
 .material-filter-arrow { color: var(--el-text-color-placeholder); }
 .material-filter-panel { color: var(--el-text-color-regular); }
+.material-filter-selection { max-width: 360px; overflow-wrap: anywhere; }
 .material-filter-actions { display: flex; align-items: center; gap: 14px; padding: 12px 0; font-size: 12px; }
 .material-filter-actions button { border: 0; padding: 0; background: transparent; color: var(--el-color-primary); cursor: pointer; font: inherit; }
 .material-filter-actions button:disabled { color: var(--el-text-color-disabled); cursor: not-allowed; }

@@ -154,6 +154,7 @@ type DeliveryDetailInput struct {
 	Quantity       string `json:"quantity" binding:"required"`
 	UnitPrice      string `json:"unitPrice"`
 	Amount         *string `json:"amount,omitempty"`
+	Remark         string `json:"remark"`
 }
 
 type CreateDeliveryInput struct {
@@ -253,6 +254,7 @@ type DeliveryListQuery struct {
 	Number        string     `json:"number,omitempty" form:"number"`
 	Department    string     `json:"department,omitempty" form:"department"`
 	MaterialIDs   string     `json:"materialIds,omitempty" form:"materialIds"`
+	DetailRemark  string     `json:"detailRemark,omitempty" form:"detailRemark"`
 }
 
 // ReportSchemeListQuery filters paginated report schemes.

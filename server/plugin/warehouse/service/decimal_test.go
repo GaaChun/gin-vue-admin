@@ -8,10 +8,11 @@ import (
 
 func TestParseDecimalBoundaries(t *testing.T) {
 	if _, err := ParseDecimal("99999999999999.9999", QuantityRule, "quantity"); err != nil { t.Fatalf("maximum quantity rejected: %v", err) }
-	for _, input := range []string{"0", "1.00000", "100000000000000", "1e3", "-1", "NaN"} {
+	for _, input := range []string{"1.00000", "100000000000000", "1e3", "-1", "NaN"} {
 		if _, err := ParseDecimal(input, QuantityRule, "quantity"); err == nil { t.Fatalf("invalid quantity %q accepted", input) }
 	}
 	if got, err := ParseDecimal("0", PriceRule, "unitPrice"); err != nil || !got.IsZero() { t.Fatalf("zero price must be accepted: %v", err) }
+	if got, err := ParseDecimal("0", QuantityRule, "quantity"); err != nil || !got.IsZero() { t.Fatalf("zero quantity must be accepted: %v", err) }
 }
 
 func TestLineAmountsRoundEachLineBeforeSumming(t *testing.T) {
@@ -52,4 +53,17 @@ func TestEnteredAmountIsAuthoritativeAndDerivedPriceIsBounded(t *testing.T) {
 	if err != nil || price.StringFixed(4) != "2.5000" || amount != nil {
 		t.Fatalf("ordinary price changed: %s %v %v", price, amount, err)
 	}
+}
+
+func TestZeroQuantityRetainsEnteredPriceAndAmountWithoutDivision(t *testing.T) {
+	for _, amountInput := range []string{"0", "12.34"} {
+		price, amount, err := ResolveLinePrice(decimal.Zero, "9.5", &amountInput)
+		if err != nil || price.String() != "9.5" || amount == nil || amount.String() != decimal.RequireFromString(amountInput).String() {
+			t.Fatalf("zero quantity price=%s amount=%v err=%v", price, amount, err)
+		}
+		line, err := CalculateLine(decimal.Zero, price, decimal.NewFromInt(1))
+		if err != nil || !line.BaseQuantity.IsZero() || !line.Amount.IsZero() { t.Fatalf("zero quantity line=%#v err=%v", line, err) }
+	}
+	if _, err := CalculateLine(decimal.NewFromInt(-1), decimal.Zero, decimal.NewFromInt(1)); err == nil { t.Fatal("negative quantity accepted") }
+	if _, err := CalculateLine(decimal.Zero, decimal.Zero, decimal.Zero); err == nil { t.Fatal("zero conversion factor accepted") }
 }

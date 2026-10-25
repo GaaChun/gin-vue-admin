@@ -109,7 +109,7 @@ func TestMixedCustomerMaterialsAreAllowedAndFailedUpdateDoesNotMutateNote(t *tes
 		t.Fatalf("mixed-customer materials rejected: note=%#v err=%v", note, err)
 	}
 	before := state.details[firstDetail(state, note.ID)]
-	_, err = state.Update(4, req.UpdateDeliveryInput{VersionedID: req.VersionedID{ID: note.ID}, DeliveredAt: note.DeliveredAt, BrandID: 1, Details: []req.DeliveryDetailInput{{ID: &before.ID, MaterialID: 1, MaterialUnitID: 1, Quantity: "0", UnitPrice: "9"}}})
+	_, err = state.Update(4, req.UpdateDeliveryInput{VersionedID: req.VersionedID{ID: note.ID}, DeliveredAt: note.DeliveredAt, BrandID: 1, Details: []req.DeliveryDetailInput{{ID: &before.ID, MaterialID: 1, MaterialUnitID: 1, Quantity: "-1", UnitPrice: "9"}}})
 	after := state.details[before.ID]
 	if err == nil || !after.Quantity.Equal(before.Quantity) || state.notes[note.ID].Version != 1 {
 		t.Fatalf("failed update changed note: err=%v quantity=%s version=%d", err, after.Quantity, state.notes[note.ID].Version)

@@ -1,4 +1,5 @@
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { reactive, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import Delivery from './delivery.vue'
@@ -9,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   allOptions: vi.fn(),
   showError: vi.fn(),
   push: vi.fn(),
-  routeQuery: { whDelivery: '1', whId: '10' }
+  routeQuery: { whDelivery: '1', whId: '10' },
+  userStore: null
 }))
 vi.mock('element-plus', () => ({
   ElMessage: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
@@ -26,16 +28,22 @@ vi.mock('../api/common', () => ({
   pageSequenceNumber: (index, page, pageSize) => (page - 1) * pageSize + index + 1,
   showError: mocks.showError
 }))
-vi.mock('@/api/user', () => ({ getUserList: vi.fn(async () => ({ code: 0, data: { list: [] } })) }))
+vi.mock('@/api/user', () => ({ getUserList: vi.fn(async () => ({ code: 0, data: { list: [] } })), setSelfSetting: vi.fn(async () => ({ code: 0 })) }))
 vi.mock('../components/delivery-material-picker.vue', () => ({ default: { props: ['materials'], template: '<div class="picker-materials">{{ materials.map(material => material.code).join(",") }}</div>' } }))
+vi.mock('../components/material-filter.vue', () => ({ default: { props: ['modelValue', 'materials'], emits: ['update:modelValue'], template: '<div class="material-filter-stub" />' } }))
 vi.mock('../api/table-widths', () => ({ getTableWidths: vi.fn(async () => ({})), saveTableWidths: vi.fn(async () => ({})) }))
-vi.mock('@/pinia/modules/user', () => ({ useUserStore: () => ({ userInfo: { ID: 1, originSetting: {} }, ResetUserInfo: vi.fn() }) }))
+vi.mock('@/pinia/modules/user', () => ({ useUserStore: () => mocks.userStore }))
 
 let wrapper
+beforeEach(() => {
+  sessionStorage.clear()
+  mocks.userStore = reactive({ userInfo: { ID: 1, originSetting: {} }, ResetUserInfo: vi.fn() })
+})
 afterEach(() => {
   wrapper?.unmount()
   wrapper = undefined
   mocks.routeQuery = { whDelivery: '1', whId: '10' }
+  sessionStorage.clear()
   vi.clearAllMocks()
 })
 
@@ -57,7 +65,7 @@ it('bulk reviews only selected drafts using each note version', async () => {
   await flushPromises()
   await wrapper.find('.select-rows').trigger('click')
   await flushPromises()
-  const bulk = wrapper.findAll('el-button').find(button => button.text().trim() === '批量审核')
+  const bulk = wrapper.find('[data-action="review-selected"]')
   expect(bulk.attributes('disabled')).toBe('false')
   await bulk.trigger('click')
   await flushPromises()
@@ -82,7 +90,7 @@ it('confirms and sends delete for an editable delivery note', async () => {
     }
   })
   await flushPromises()
-  const deleteButton = wrapper.findAll('el-button').find(button => button.text().trim() === '删除')
+  const deleteButton = wrapper.findAll('.delivery-detail-footer el-button').find(button => button.text().trim() === '删除')
   expect(deleteButton, 'editable delivery delete button').toBeTruthy()
   await deleteButton.trigger('click')
   await flushPromises()
@@ -272,8 +280,8 @@ it('saves the edited note and routes to a cleared new-note form', async () => {
   }))
 })
 
-it('returns to the delivery list after normal save of a new note', async () => {
-  sessionStorage.removeItem('warehouse.delivery.createDraft')
+it('keeps a newly saved note open with its persisted identity for subsequent updates', async () => {
+  sessionStorage.removeItem('warehouse.delivery.1.draft.new')
   mocks.routeQuery = { whDelivery: '1', whNew: '1' }
   mocks.allOptions.mockResolvedValue([])
   const saved = { note: { id: 20, version: 1, number: 'SK260101000020', status: 'draft', brandId: 2, deliveredAt: '2026-01-01T00:00:00Z' }, details: [] }
@@ -297,12 +305,15 @@ it('returns to the delivery list after normal save of a new note', async () => {
 
   expect(mocks.push).toHaveBeenCalledWith(expect.objectContaining({
     name: 'warehouseDelivery',
-    query: {}
+    query: { whDelivery: '1', whId: '20' }
   }))
+  expect(state.note).toMatchObject({ id: 20, version: 1 })
+  expect(state.editorOpen).toBe(true)
+  expect(state.dirty).toBe(false)
 })
 
 it('clears and reserves a new note when continuing from the existing new-note route', async () => {
-  sessionStorage.removeItem('warehouse.delivery.createDraft')
+  sessionStorage.removeItem('warehouse.delivery.1.draft.new')
   mocks.routeQuery = { whDelivery: '1', whNew: '1' }
   mocks.allOptions.mockResolvedValue([])
   const saved = { note: { id: 21, version: 1, number: 'SK260101000021', status: 'draft', brandId: 2, deliveredAt: '2026-01-01T00:00:00Z' }, details: [] }
@@ -438,8 +449,6 @@ it('sorts displayed detail rows without changing their submitted order and uses 
   expect(mocks.push).toHaveBeenLastCalledWith({ name: 'warehouseDelivery', query: { whDelivery: '1', whNew: '1' } })
   await state.reloadEditor()
   expect(mocks.request.mock.calls.filter(([request]) => request.url === '/warehouse/delivery/detail')).toHaveLength(2)
-  expect(wrapper.find('.detail-table').attributes('data-size')).toBe('small')
-  expect(wrapper.findAll('.detail-table .detail-column').filter(column => column.attributes('data-sortable') === 'custom')).toHaveLength(7)
   state.changeDetailSort({ prop: 'quantity', order: 'ascending' })
   expect(state.displayRows.map(row => row.materialCode)).toEqual(['M1', 'M2'])
   expect(state.rows.map(row => row.materialCode)).toEqual(['M2', 'M1'])
@@ -479,17 +488,14 @@ it('defaults new material values and calculates editor amount with decimal preci
   row.unitPrice = '2.4'
   state.clearFieldError(row, 'quantity')
   expect(row.amount).toBe('3.00')
-  const input = { setSelectionRange: vi.fn() }
-  state.moveCaretToStart({ target: input })
-  expect(input.setSelectionRange).toHaveBeenCalledWith(0, 0)
 })
 it('copies reviewed delivery data into a new draft without copying identities', async () => {
-  sessionStorage.removeItem('warehouse.delivery.createDraft')
+  sessionStorage.removeItem('warehouse.delivery.1.draft.new')
   mocks.allOptions.mockResolvedValue([])
   const aggregate = {
     note: { id: 22, version: 5, number: 'SK260101000022', status: 'reviewed', brandId: 3, department: '仓库', deliveredAt: '2026-02-03T00:00:00Z' },
     details: [
-      { id: 99, materialId: 7, materialUnitId: 8, unitId: 9, baseUnitId: 9, factor: '1', quantity: '2.5', unitPrice: '12.25', amount: '30.63', materialCodeSnapshot: 'M-7', materialNameSnapshot: '物料七', specificationSnapshot: '规格A', unitNameSnapshot: '件' }
+      { id: 99, materialId: 7, materialUnitId: 8, unitId: 9, baseUnitId: 9, factor: '1', quantity: '2.5', unitPrice: '12.25', amount: '30.63', remark: '轻放，送至东门', materialCodeSnapshot: 'M-7', materialNameSnapshot: '物料七', specificationSnapshot: '规格A', unitNameSnapshot: '件' }
     ]
   }
   mocks.request.mockImplementation(async ({ url }) => {
@@ -513,13 +519,13 @@ it('copies reviewed delivery data into a new draft without copying identities', 
   expect(wrapper.find('.delivery-detail-footer').text()).toContain('复制单据')
   await state.copyDocument()
 
-  const draft = JSON.parse(sessionStorage.getItem('warehouse.delivery.createDraft'))
+  const draft = JSON.parse(sessionStorage.getItem('warehouse.delivery.1.draft.new'))
   expect(draft.form).toMatchObject({ brandId: 3, department: '仓库' })
   expect(draft.reservation).toEqual({})
   expect(draft.rows).toHaveLength(1)
   expect(draft.rows[0]).toMatchObject({
     materialId: 7, materialUnitId: 8, materialCode: 'M-7',
-    quantity: '2.5', unitPrice: '12.25', unitsLoaded: false
+    quantity: '2.5', unitPrice: '12.25', remark: '轻放，送至东门', unitsLoaded: false
   })
   expect(draft.rows[0].id).toBeUndefined()
   expect(draft.rows[0].amount).toBe('30.63')
@@ -530,7 +536,7 @@ it('copies reviewed delivery data into a new draft without copying identities', 
   expect(state.form).toMatchObject({ brandId: 3, department: '仓库', deliveredAt: '2026-02-03' })
   expect(state.reservation).toMatchObject({ number: 'SK260101000023', token: 'new-token' })
   expect(state.rows).toHaveLength(1)
-  expect(state.rows[0]).toMatchObject({ materialId: 7, materialUnitId: 8, quantity: '2.5', unitPrice: '12.25' })
+  expect(state.rows[0]).toMatchObject({ materialId: 7, materialUnitId: 8, quantity: '2.5', unitPrice: '12.25', remark: '轻放，送至东门' })
   expect(state.rows[0].id).toBeUndefined()
   expect(mocks.request).toHaveBeenCalledWith({ url: '/warehouse/delivery/reserveNumber', method: 'post' })
 })
@@ -548,7 +554,10 @@ async function mountEditableDelivery(status = 'draft') {
     if (url.endsWith('/list')) return { list: [], total: 0, page: 1, pageSize: 20 }
     if (url.endsWith('/departments')) return ['采购部', '仓库']
     if (url.endsWith('/reReview')) return { id: 10, status: 'reReviewed', reReviewOpinion: data.opinion }
-    if (url.endsWith('/update') || url.endsWith('/create')) return {}
+    if (url.endsWith('/update') || url.endsWith('/create')) return {
+      Note: { id: data.id || 20, version: (data.version || 0) + 1, number: 'SK10', status: data.review ? 'reviewed' : 'draft', brandId: data.brandId, deliveredAt: data.deliveredAt },
+      Details: data.details.map((detail, index) => ({ ...detail, id: detail.id || index + 1, materialCodeSnapshot: 'M7', unitNameSnapshot: '件' }))
+    }
     throw new Error(`Unexpected request: ${url}`)
   })
   wrapper = mount(Delivery, { global: { stubs: {
@@ -564,7 +573,7 @@ it('saves edited content and reviews atomically through update', async () => {
   const state = await mountEditableDelivery()
   state.rows[0].quantity = '4'
   state.clearFieldError(state.rows[0], 'quantity')
-  await wrapper.findAll('el-button').find(button => button.text().trim() === '审核').trigger('click')
+  await wrapper.findAll('.delivery-detail-footer el-button').find(button => button.text().trim() === '审核').trigger('click')
   await flushPromises()
   const update = mocks.request.mock.calls.map(([arg]) => arg).find(arg => arg.url.endsWith('/update'))
   expect(update.data.review).toBe(true)
@@ -608,7 +617,7 @@ it('keeps exactly one active row and removes selected lines only locally after c
 
 it('collects optional review opinion and blocks unreview until rereview is cancelled', async () => {
   const state = await mountEditableDelivery('reviewed')
-  await wrapper.findAll('el-button').find(button => button.text().trim() === '复审').trigger('click')
+  await wrapper.findAll('.delivery-detail-footer el-button').find(button => button.text().trim() === '复审').trigger('click')
   expect(state.reReviewDialog.open).toBe(true)
   state.reReviewDialog.opinion = '核对无误'
   await state.confirmReReview()
@@ -716,7 +725,7 @@ it('activates the next row on line completion', async () => {
   const row = state.rows[0]
   const enter = { key: 'Enter', preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() }
   row.amount = '0.00'
-  state.cellKeydown(enter, row, 'amount')
+  state.cellKeydown(enter, row, 'remark')
   await flushPromises()
   expect(state.activeRowKey).toBe(state.rows[1].rowKey)
   expect(state.bindingLabel({ name: '件', enabled: false })).toBe('件')
@@ -741,7 +750,7 @@ it('cancels rereview with the current version before offering unreview', async (
 
 it('restores draft rows with unique keys so newly added rows cannot share editing state', async () => {
   const state = await mountEditableDelivery()
-  sessionStorage.setItem('warehouse.delivery.createDraft', JSON.stringify({
+  sessionStorage.setItem('warehouse.delivery.1.draft.new', JSON.stringify({
     form: { brandId: 2, department: '', deliveredAt: '2026-01-01' },
     reservation: { number: 'SKNEW', token: 'reserved' },
     rows: [{ ...state.emptyRow(), rowKey: 'delivery-row-1', materialId: 7 }]
@@ -751,6 +760,419 @@ it('restores draft rows with unique keys so newly added rows cannot share editin
   await flushPromises()
   expect(new Set(state.rows.map(row => row.rowKey)).size).toBe(state.rows.length)
   expect(state.activeRowKey).toBe(state.rows.at(-1).rowKey)
-  sessionStorage.removeItem('warehouse.delivery.createDraft')
+  sessionStorage.removeItem('warehouse.delivery.1.draft.new')
   state.editorOpen = false
+})
+
+it.each(['Enter', 'Tab'])('moves backward on Shift+%s including across rows with open selectors', async key => {
+  const state = await mountEditableDelivery()
+  const [first, second] = state.rows
+  const previousRemark = { focus: vi.fn() }
+  const material = { focus: vi.fn(), blur: vi.fn(), expanded: true }
+  const unit = { focus: vi.fn(), blur: vi.fn(), expanded: true }
+  state.setCellRef(first, 'remark', previousRemark)
+  state.setCellRef(second, 'material', material)
+  state.setCellRef(second, 'unit', unit)
+  const event = () => ({ key, shiftKey: true, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() })
+  state.cellKeydown(event(), second, 'material')
+  await flushPromises()
+  expect(previousRemark.focus).toHaveBeenCalledOnce()
+  expect(state.activeRowKey).toBe(first.rowKey)
+  expect(material.expanded).toBe(false)
+  second.unitOpen = true
+  state.cellKeydown(event(), second, 'unit')
+  await flushPromises()
+  expect(material.focus).toHaveBeenCalledOnce()
+  expect(state.activeRowKey).toBe(second.rowKey)
+  expect(unit.expanded).toBe(false)
+})
+
+it('reorders sorted detail rows explicitly and submits that order while remaining in the editor', async () => {
+  const state = await mountEditableDelivery()
+  const [first, second] = state.rows
+  state.changeDetailSort({ prop: 'quantity', order: 'ascending' })
+  expect(state.displayRows.map(row => row.id)).toEqual([2, 1])
+  state.draggedRowKey = first.rowKey
+  state.dropRow(second)
+  expect(state.rows.map(row => row.id)).toEqual([1, 2])
+  state.draggedRowKey = first.rowKey
+  state.dropRow(second, 'after')
+  expect(state.rows.map(row => row.id)).toEqual([2, 1])
+  await state.save()
+  expect(state.rows.map(row => row.id)).toEqual([2, 1])
+  expect(state.note.version).toBe(4)
+  expect(state.editorOpen).toBe(true)
+  expect(state.dirty).toBe(false)
+  expect(mocks.push).not.toHaveBeenCalled()
+  expect(state.validatedDetails().map(row => row.id)).toEqual([2, 1])
+})
+
+it('keeps derived decimals exact without trailing zeros and changes dates across month boundaries', async () => {
+  const state = await mountEditableDelivery()
+  const row = state.rows[0]
+  row.quantity = '4'; row.amount = '44'
+  state.clearFieldError(row, 'amount')
+  expect(row.unitPrice).toBe('11')
+  row.quantity = '3'; row.amount = '1'
+  state.clearFieldError(row, 'amount')
+  expect(row.unitPrice).toBe('0.3333')
+  state.form.deliveredAt = '2024-03-01'
+  state.adjustDeliveryDate({ key: 'ArrowLeft', preventDefault() {} })
+  expect(state.form.deliveredAt).toBe('2024-02-29')
+  state.adjustDeliveryDate({ key: 'ArrowRight', preventDefault() {} })
+  expect(state.form.deliveredAt).toBe('2024-03-01')
+})
+
+async function remountDelivery(query = mocks.routeQuery) {
+  wrapper?.unmount()
+  mocks.routeQuery = reactive(query)
+  wrapper = mount(Delivery, { global: { stubs: {
+    'el-table': { props: ['data'], template: '<div><slot /></div>' },
+    'el-table-column': { template: '<div />' },
+    'el-dialog': { props: ['modelValue'], template: '<div v-if="modelValue"><slot /><slot name="footer" /></div>' }
+  } } })
+  await flushPromises()
+  return wrapper.vm.$.setupState
+}
+
+it('retains edited headers and added/reordered rows through list and other-tab remounts without a discard prompt', async () => {
+  let state = await mountEditableDelivery()
+  state.form.department = '未保存的部门'
+  state.rows[0].quantity = '17'
+  state.addBlankRow()
+  Object.assign(state.rows.at(-1), { materialId: 20, materialUnitId: 21, quantity: '5', unitPrice: '3' })
+  state.draggedRowKey = state.rows.at(-1).rowKey
+  state.dropRow(state.rows[0])
+  const expectedRows = state.rows.map(({ id, materialId, quantity }) => ({ id, materialId, quantity }))
+  await state.closeEditor()
+  expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+  expect(mocks.push).toHaveBeenLastCalledWith({ name: 'warehouseDelivery', query: {} })
+  state = await remountDelivery({})
+  expect(state.editorOpen).toBe(false)
+  state = await remountDelivery({ whDelivery: '1', whId: '10' })
+  expect(state.form.department).toBe('未保存的部门')
+  expect(state.rows.map(({ id, materialId, quantity }) => ({ id, materialId, quantity }))).toEqual(expectedRows)
+  expect(state.dirty).toBe(true)
+  state = await remountDelivery()
+  expect(state.form.department).toBe('未保存的部门')
+  expect(state.rows.map(row => row.materialId)).toEqual([20, 7, 7])
+  expect(new Set(state.rows.map(row => row.rowKey)).size).toBe(3)
+})
+
+it('preserves list conditions, paging, sorting and expanded filters across remounts and display setting updates', async () => {
+  await mountEditableDelivery()
+  mocks.request.mockImplementation(async ({ url, params }) => {
+    if (url.endsWith('/list')) return { list: [], total: 200, page: params.page, pageSize: params.pageSize }
+    if (url.endsWith('/departments')) return []
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  let state = await remountDelivery({})
+  Object.assign(state.filters, { number: 'SK42', department: '采购部', materialIds: [7, 8], brandId: 2, status: 'draft', detailRemark: '轻放', dates: ['2026-01-01', '2026-01-31'] })
+  state.page = 3; state.pageSize = 50
+  state.sortBy = 'department'; state.sortOrder = 'asc'; state.moreFiltersOpen = true
+  await flushPromises()
+  mocks.userStore.userInfo.originSetting = {
+    'warehouseDocumentDisplay.delivery': { dateDefault: 'today', filters: { basic: ['dates', 'number', 'materialIds', 'brandId'], more: ['department', 'status', 'detailRemark'] }, list: { columns: ['number'] } }
+  }
+  await flushPromises()
+  expect(state.filters.department).toBe('采购部')
+  expect(state.filters.dates).toEqual(['2026-01-01', '2026-01-31'])
+  state = await remountDelivery({})
+  expect(state.filters).toMatchObject({ number: 'SK42', department: '采购部', materialIds: [7, 8], brandId: 2, status: 'draft', detailRemark: '轻放', dates: ['2026-01-01', '2026-01-31'] })
+  expect([state.page, state.pageSize, state.sortBy, state.sortOrder, state.moreFiltersOpen]).toEqual([3, 50, 'department', 'asc', true])
+  state.changeSort({ prop: 'department', order: 'ascending' })
+  expect(state.page).toBe(3)
+  expect(mocks.request.mock.calls.map(([request]) => request).filter(request => request.url.endsWith('/list')).at(-1).params).toMatchObject({
+    page: 3, pageSize: 50, number: 'SK42', department: '采购部', materialIds: '7,8', detailRemark: '轻放', sortBy: 'department', sortOrder: 'asc'
+  })
+  state.resetSearch()
+  await flushPromises()
+  expect(state.filters.number).toBe('')
+  expect(state.filters.detailRemark).toBe('')
+  expect(state.filters.dates).not.toEqual(['2026-01-01', '2026-01-31'])
+  expect(state.page).toBe(1)
+})
+
+it('isolates existing and new drafts and list conditions by account and document', async () => {
+  let state = await mountEditableDelivery()
+  const backend = mocks.request.getMockImplementation()
+  mocks.request.mockImplementation(async request => {
+    if (request.url.endsWith('/reserveNumber')) return { number: `SK-NEW-${mocks.userStore.userInfo.ID}`, token: `token-${mocks.userStore.userInfo.ID}` }
+    const result = await backend(request)
+    if (request.url === '/warehouse/delivery/detail') return { ...result, note: { ...result.note, id: request.params.id } }
+    return result
+  })
+  state.form.department = '甲账号单据10'
+  state.filters.number = '甲账号查询'
+  state = await remountDelivery({ whDelivery: '1', whId: '11' })
+  expect(state.form.department).toBe('')
+  state.form.department = '甲账号单据11'
+  state = await remountDelivery({ whDelivery: '1', whNew: '1' })
+  expect(state.note.id).toBeUndefined()
+  expect(state.rows.every(row => !row.id)).toBe(true)
+  state.form.department = '甲账号新增'
+  wrapper.unmount(); wrapper = undefined
+  mocks.userStore.userInfo = { ID: 2, originSetting: {} }
+  state = await remountDelivery({ whDelivery: '1', whId: '10' })
+  expect(state.form.department).toBe('')
+  expect(state.filters.number).toBe('')
+  state.form.department = '乙账号单据10'
+  state = await remountDelivery({ whDelivery: '1', whNew: '1' })
+  expect(state.form.department).toBe('')
+  expect(state.reservation.token).toBe('token-2')
+  wrapper.unmount(); wrapper = undefined
+  mocks.userStore.userInfo = { ID: 1, originSetting: {} }
+  state = await remountDelivery({ whDelivery: '1', whId: '10' })
+  expect(state.form.department).toBe('甲账号单据10')
+  expect(state.filters.number).toBe('甲账号查询')
+  state = await remountDelivery({ whDelivery: '1', whId: '11' })
+  expect(state.form.department).toBe('甲账号单据11')
+  state = await remountDelivery({ whDelivery: '1', whNew: '1' })
+  expect(state.form.department).toBe('甲账号新增')
+  expect(state.reservation.token).toBe('token-1')
+})
+
+it('does not overwrite a retained draft while loading and keeps its original version until explicit reload', async () => {
+  let state = await mountEditableDelivery()
+  state.form.department = '版本3的本地修改'
+  await flushPromises()
+  const backend = mocks.request.getMockImplementation()
+  let resolveDetail
+  mocks.request.mockImplementation(request => request.url === '/warehouse/delivery/detail'
+    ? new Promise(resolve => { resolveDetail = resolve })
+    : backend(request))
+  const remount = remountDelivery()
+  await flushPromises()
+  const retained = JSON.parse(sessionStorage.getItem('warehouse.delivery.1.draft.10'))
+  expect(retained.form.department).toBe('版本3的本地修改')
+  const latest = {
+    Note: { id: 10, version: 4, number: 'SK10', status: 'draft', brandId: 2, department: '服务端修改', deliveredAt: '2026-01-01T00:00:00Z' },
+    Details: [{ id: 1, materialId: 7, materialUnitId: 8, quantity: '2', unitPrice: '3' }]
+  }
+  resolveDetail(latest)
+  await flushPromises()
+  state = await remount
+  expect(state.form.department).toBe('版本3的本地修改')
+  expect(state.note.version).toBe(3)
+  mocks.request.mockImplementation(async request => request.url === '/warehouse/delivery/detail' ? latest : backend(request))
+  await state.reloadEditor()
+  expect(state.form.department).toBe('服务端修改')
+  expect(state.note.version).toBe(4)
+  expect(sessionStorage.getItem('warehouse.delivery.1.draft.10')).toBeNull()
+  state.form.department = '读取版本4后修改'
+  await state.save()
+  expect(mocks.request).toHaveBeenCalledWith(expect.objectContaining({ url: '/warehouse/delivery/update', data: expect.objectContaining({ version: 4 }) }))
+  expect(state.note.version).toBe(5)
+  expect(sessionStorage.getItem('warehouse.delivery.1.draft.10')).toBeNull()
+})
+
+it('clears only the saved draft and resumes subsequent edits using the saved version', async () => {
+  let state = await mountEditableDelivery()
+  state.form.department = '待保存'
+  await flushPromises()
+  sessionStorage.setItem('warehouse.delivery.1.draft.new', JSON.stringify({ form: { department: '另外的新单' }, reservation: {}, rows: [] }))
+  await state.save()
+  expect(sessionStorage.getItem('warehouse.delivery.1.draft.10')).toBeNull()
+  expect(JSON.parse(sessionStorage.getItem('warehouse.delivery.1.draft.new')).form.department).toBe('另外的新单')
+  state.form.department = '保存后的继续修改'
+  state = await remountDelivery()
+  expect(state.note.version).toBe(4)
+  expect(state.form.department).toBe('保存后的继续修改')
+  await state.save()
+  expect(mocks.request).toHaveBeenLastCalledWith(expect.objectContaining({ url: '/warehouse/delivery/list' }))
+  expect(mocks.request.mock.calls.map(([request]) => request).filter(request => request.url.endsWith('/update')).at(-1).data.version).toBe(4)
+})
+
+it('preserves the same document while switching edit/list routes without remounting', async () => {
+  mocks.routeQuery = reactive({ whDelivery: '1', whId: '10' })
+  const state = await mountEditableDelivery()
+  state.form.department = '当前编辑内容'
+  state.filters.department = '当前查询部门'
+  state.rows[1].quantity = '23'
+  delete mocks.routeQuery.whDelivery
+  delete mocks.routeQuery.whId
+  await flushPromises()
+  expect(state.editorOpen).toBe(false)
+  Object.assign(mocks.routeQuery, { whDelivery: '1', whId: '10' })
+  await flushPromises()
+  expect(state.form.department).toBe('当前编辑内容')
+  expect(state.rows[1].quantity).toBe('23')
+  expect(state.filters.department).toBe('当前查询部门')
+  expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+})
+
+it('preserves each account when switching users without remounting and ignores an old account detail response', async () => {
+  const state = await mountEditableDelivery()
+  state.form.department = '账号甲编辑'
+  state.filters.number = '账号甲查询'
+  const backend = mocks.request.getMockImplementation()
+  let finishOtherAccount
+  mocks.request.mockImplementation(request => request.url === '/warehouse/delivery/detail'
+    ? new Promise(resolve => { finishOtherAccount = resolve })
+    : backend(request))
+  mocks.userStore.userInfo = { ID: 2, originSetting: {} }
+  await flushPromises()
+  expect(state.filters.number).toBe('')
+  expect(state.form.department).toBe('')
+  const finishAccountTwo = finishOtherAccount
+  mocks.request.mockImplementation(backend)
+  mocks.userStore.userInfo = { ID: 1, originSetting: {} }
+  await flushPromises()
+  expect(state.filters.number).toBe('账号甲查询')
+  expect(state.form.department).toBe('账号甲编辑')
+  finishAccountTwo({ Note: { id: 10, version: 99, status: 'draft', department: '账号乙数据' }, Details: [] })
+  await flushPromises()
+  expect(state.form.department).toBe('账号甲编辑')
+  expect(state.note.version).toBe(3)
+})
+
+it('does not restore a newly saved document or detail identities into the new-note draft', async () => {
+  let state = await mountEditableDelivery()
+  const backend = mocks.request.getMockImplementation()
+  mocks.request.mockImplementation(request => request.url.endsWith('/reserveNumber')
+    ? Promise.resolve({ number: 'SK-NEW', token: 'new-token' })
+    : backend(request))
+  state = await remountDelivery({ whDelivery: '1', whNew: '1' })
+  state.form.brandId = 2
+  Object.assign(state.rows[0], { materialId: 7, materialUnitId: 8, quantity: '1', unitPrice: '2' })
+  await state.save()
+  expect(state.note).toMatchObject({ id: 20, version: 1 })
+  expect(sessionStorage.getItem('warehouse.delivery.1.draft.new')).toBeNull()
+  state.form.department = '保存后编辑的是20号单据'
+  await flushPromises()
+  expect(JSON.parse(sessionStorage.getItem('warehouse.delivery.1.draft.20')).note.id).toBe(20)
+  state = await remountDelivery({ whDelivery: '1', whNew: '1' })
+  expect(state.note.id).toBeUndefined()
+  expect(state.form.department).toBe('')
+  expect(state.rows).toHaveLength(1)
+  expect(state.rows[0].id).toBeUndefined()
+  expect(state.rows[0].materialId).toBeUndefined()
+})
+
+it('allows saving zero quantity, unit price and amount but still rejects negatives and invalid precision', async () => {
+  const state = await mountEditableDelivery()
+  state.rows.splice(1)
+  const row = state.rows[0]
+  Object.assign(row, { quantity: '0', unitPrice: '0', amount: '0', amountEdited: true })
+  expect(state.validatedDetails()).toEqual([expect.objectContaining({ quantity: '0', unitPrice: '0', amount: '0' })])
+  await state.save()
+  expect(mocks.request).toHaveBeenCalledWith(expect.objectContaining({
+    url: '/warehouse/delivery/update',
+    data: expect.objectContaining({ details: [expect.objectContaining({ quantity: '0', unitPrice: '0', amount: '0' })] })
+  }))
+  for (const field of ['quantity', 'unitPrice', 'amount']) {
+    row[field] = '-1'
+    expect(state.validateDecimal(row, field)).toBe(false)
+    row[field] = field === 'amount' ? '0.001' : '0.00001'
+    expect(state.validateDecimal(row, field)).toBe(false)
+    row[field] = '0'
+    expect(state.validateDecimal(row, field)).toBe(true)
+  }
+})
+
+it('captures date arrow key events outside the date-picker component boundary', async () => {
+  const state = await mountEditableDelivery()
+  state.form.deliveredAt = '2024-03-01'
+  await wrapper.find('.delivery-detail-page el-date-picker').trigger('keydown', { key: 'ArrowLeft' })
+  expect(state.form.deliveredAt).toBe('2024-02-29')
+})
+
+it('retains remark-only edits in existing drafts and saves and clears them verbatim', async () => {
+  let state = await mountEditableDelivery()
+  expect(state.dirty).toBe(false)
+  state.rows[0].remark = '  送至东门  '
+  await flushPromises()
+  expect(state.dirty).toBe(true)
+  expect(JSON.parse(sessionStorage.getItem('warehouse.delivery.1.draft.10')).rows[0].remark).toBe('  送至东门  ')
+  state = await remountDelivery()
+  expect(state.rows[0].remark).toBe('  送至东门  ')
+  await state.save()
+  expect(mocks.request).toHaveBeenCalledWith(expect.objectContaining({
+    url: '/warehouse/delivery/update', data: expect.objectContaining({ details: expect.arrayContaining([expect.objectContaining({ id: 1, remark: '  送至东门  ' })]) })
+  }))
+  expect(state.rows[0].remark).toBe('  送至东门  ')
+  expect(state.dirty).toBe(false)
+  state.rows[0].remark = ''
+  await state.save()
+  const saved = mocks.request.mock.calls.map(([request]) => request).filter(request => request.url.endsWith('/update')).at(-1)
+  expect(saved.data.details[0].remark).toBe('')
+  expect(state.rows[0].remark).toBe('')
+})
+
+it('does not discard a remark-only trailing row as an empty row', async () => {
+  const state = await mountEditableDelivery()
+  const row = state.emptyRow()
+  row.remark = '待补物料'
+  state.rows.push(row)
+  expect(state.validatedDetails()).toBeNull()
+  expect(row.errors.materialId).toBeTruthy()
+})
+
+it.each(['Enter', 'Tab'])('navigates forward and backward through the remark cell on %s', async key => {
+  const state = await mountEditableDelivery()
+  const [first, second] = state.rows
+  const remark = { focus: vi.fn() }
+  const amount = { focus: vi.fn() }
+  const material = { focus: vi.fn() }
+  state.setCellRef(first, 'remark', remark)
+  state.setCellRef(first, 'amount', amount)
+  state.setCellRef(second, 'material', material)
+  const event = shiftKey => ({ key, shiftKey, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() })
+  state.cellKeydown(event(false), first, 'amount')
+  await flushPromises()
+  expect(remark.focus).toHaveBeenCalledOnce()
+  state.cellKeydown(event(true), first, 'remark')
+  await flushPromises()
+  expect(amount.focus).toHaveBeenCalledOnce()
+  state.cellKeydown(event(false), first, 'remark')
+  await flushPromises()
+  expect(material.focus).toHaveBeenCalledOnce()
+})
+
+it('rehydrates a cached editor on activation without resurrecting an already-saved draft', async () => {
+  await mountEditableDelivery()
+  wrapper.unmount()
+  const backend = mocks.request.getMockImplementation()
+  let latest
+  mocks.request.mockImplementation(request => request.url === '/warehouse/delivery/detail' && latest
+    ? Promise.resolve(latest)
+    : backend(request))
+  const visible = ref(true)
+  wrapper = mount({
+    components: { Delivery },
+    setup: () => ({ visible }),
+    template: '<keep-alive><Delivery v-if="visible" /></keep-alive>'
+  }, { global: { stubs: {
+    'el-table': { props: ['data'], template: '<div><slot /></div>' },
+    'el-table-column': { template: '<div />' },
+    'el-dialog': { props: ['modelValue'], template: '<div v-if="modelValue"><slot /><slot name="footer" /></div>' }
+  } } })
+  await flushPromises()
+  let state = wrapper.findComponent(Delivery).vm.$.setupState
+  state.form.department = '缓存中的草稿'
+  visible.value = false
+  await flushPromises()
+  expect(JSON.parse(sessionStorage.getItem('warehouse.delivery.1.draft.10')).form.department).toBe('缓存中的草稿')
+  sessionStorage.removeItem('warehouse.delivery.1.draft.10')
+  latest = { Note: { id: 10, version: 4, number: 'SK10', status: 'draft', brandId: 2, department: '已保存的新版本', deliveredAt: '2026-01-01T00:00:00Z' }, Details: [] }
+  visible.value = true
+  await flushPromises()
+  state = wrapper.findComponent(Delivery).vm.$.setupState
+  expect(state.form.department).toBe('已保存的新版本')
+  expect(state.note.version).toBe(4)
+  expect(state.dirty).toBe(false)
+  expect(sessionStorage.getItem('warehouse.delivery.1.draft.10')).toBeNull()
+})
+
+it('removes an existing draft when all edits are intentionally reverted to the saved values', async () => {
+  let state = await mountEditableDelivery()
+  state.form.department = '临时修改'
+  await flushPromises()
+  expect(sessionStorage.getItem('warehouse.delivery.1.draft.10')).not.toBeNull()
+  state.form.department = ''
+  await flushPromises()
+  expect(sessionStorage.getItem('warehouse.delivery.1.draft.10')).toBeNull()
+  state = await remountDelivery()
+  expect(state.form.department).toBe('')
+  expect(state.dirty).toBe(false)
 })

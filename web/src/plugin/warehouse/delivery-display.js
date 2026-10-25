@@ -2,7 +2,8 @@ export const DISPLAY_SETTING_KEY = 'warehouseDocumentDisplay.delivery'
 
 export const FILTER_FIELDS = [
   { key: 'number', label: '单号' }, { key: 'dates', label: '送货日期' },
-  { key: 'brandId', label: '客户' }, { key: 'materialIds', label: '物料' }, { key: 'department', label: '部门' }, { key: 'status', label: '状态' }
+  { key: 'brandId', label: '客户' }, { key: 'materialIds', label: '物料' }, { key: 'department', label: '部门' }, { key: 'status', label: '状态' },
+  { key: 'detailRemark', label: '明细备注' }
 ]
 export const LIST_FIELDS = [
   { key: 'number', label: '单号', width: 170 }, { key: 'deliveredAt', label: '送货日期', width: 120 },
@@ -19,7 +20,8 @@ export const DETAIL_FIELDS = [
   { key: 'unitName', label: '单位', width: 100, required: true },
   { key: 'quantity', label: '数量', width: 130, required: true },
   { key: 'unitPrice', label: '单价', width: 130, required: true },
-  { key: 'amount', label: '金额', width: 140, required: false }
+  { key: 'amount', label: '金额', width: 140, required: false },
+  { key: 'remark', label: '明细备注', width: 200, required: true }
 ]
 const presets = ['system', 'thisMonth', 'last7', 'last30', 'today', 'yesterday', 'thisYear']
 const keys = (fields) => fields.map((field) => field.key)
@@ -37,7 +39,7 @@ function cleanWidths(value, fields) {
 export function normalizeDisplaySettings(raw) {
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
   const basic = cleanKeys(source.filters?.basic, FILTER_FIELDS, ['number', 'dates', 'brandId', 'materialIds'])
-  const more = cleanKeys(source.filters?.more, FILTER_FIELDS, ['department', 'status']).filter((key) => !basic.includes(key))
+  const more = cleanKeys(source.filters?.more, FILTER_FIELDS, ['department', 'status', 'detailRemark']).filter((key) => !basic.includes(key))
   if (!basic.includes('dates') && !more.includes('dates')) basic.push('dates')
   const detailColumns = cleanKeys(source.detail?.columns, DETAIL_FIELDS, keys(DETAIL_FIELDS))
   for (const field of DETAIL_FIELDS) if (field.required && !detailColumns.includes(field.key)) detailColumns.push(field.key)
@@ -45,7 +47,7 @@ export function normalizeDisplaySettings(raw) {
   return {
     dateDefault: presets.includes(source.dateDefault) ? source.dateDefault : 'system',
     filters: { basic, more },
-    list: { columns: cleanKeys(Array.isArray(raw) ? raw : source.list?.columns, LIST_FIELDS, keys(LIST_FIELDS)), widths: cleanWidths(source.list?.widths, LIST_FIELDS) },
+    list: { columns: cleanKeys(Array.isArray(raw) ? raw : source.list?.columns, LIST_FIELDS, keys(LIST_FIELDS)), widths: cleanWidths(source.list?.widths, LIST_FIELDS), showActions: source.list?.showActions !== false },
     detail: { columns: detailColumns, widths: cleanWidths(source.detail?.widths, DETAIL_FIELDS), frozen: typeof frozen === 'number' && Number.isFinite(frozen) ? Math.min(detailColumns.length, Math.max(0, Math.floor(frozen))) : 0 }
   }
 }

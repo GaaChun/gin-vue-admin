@@ -191,3 +191,54 @@ func TestPersistedDeliveryListSortsLastEditorNameAndTime(t *testing.T) {
 		}
 	}
 }
+
+func TestPersistedDeliveryDetailReorder(t *testing.T) {
+	_, s := persistedDeliveryFixture(t)
+	ctx := context.Background()
+	reservation, err := s.ReserveNumber(ctx, 4)
+	if err != nil { t.Fatal(err) }
+	input := deliveryInput(reservation.Token, "1", "2")
+	second := input.Details[0]
+	second.Quantity = "3"
+	input.Details = append(input.Details, second)
+	created, err := s.Create(ctx, 4, "编辑人", input)
+	if err != nil { t.Fatal(err) }
+	firstID, secondID := created.Details[0].ID, created.Details[1].ID
+	version := created.Note.Version
+	_, err = s.Update(ctx, 4, "编辑人", req.UpdateDeliveryInput{
+		VersionedID: req.VersionedID{ID: created.Note.ID, Version: &version},
+		BrandID: 1, DeliveredAt: created.Note.DeliveredAt,
+		Details: []req.DeliveryDetailInput{
+			{ID: &secondID, MaterialID: 1, MaterialUnitID: 1, Quantity: "3", UnitPrice: "2"},
+			{ID: &firstID, MaterialID: 1, MaterialUnitID: 1, Quantity: "1", UnitPrice: "2"},
+		},
+	})
+	if err != nil { t.Fatal(err) }
+	reloaded, err := s.Detail(ctx, created.Note.ID)
+	if err != nil { t.Fatal(err) }
+	if len(reloaded.Details) != 2 || reloaded.Details[0].ID != secondID || reloaded.Details[1].ID != firstID ||
+		reloaded.Details[0].LineNo != 1 || reloaded.Details[1].LineNo != 2 ||
+		reloaded.Details[0].Quantity.String() != "3" || reloaded.Details[1].Quantity.String() != "1" {
+		t.Fatalf("persisted order = %#v", reloaded.Details)
+	}
+}
+
+func TestPersistedDeliveryAllowsZeroValuedLines(t *testing.T) {
+	_, s := persistedDeliveryFixture(t)
+	ctx := context.Background()
+	created := createPersistedDelivery(t, s, false, "0", "0")
+	stored, err := s.Detail(ctx, created.Note.ID)
+	if err != nil { t.Fatal(err) }
+	if len(stored.Details) != 1 || !stored.Details[0].Quantity.IsZero() || !stored.Details[0].Amount.IsZero() || !stored.Note.TotalAmount.IsZero() { t.Fatalf("zero line not retained: %#v", stored) }
+	lineID := stored.Details[0].ID
+	amount := "12.34"
+	_, err = s.Update(ctx, 4, "编辑人", req.UpdateDeliveryInput{
+		VersionedID: req.VersionedID{ID: created.Note.ID},
+		BrandID: 1, DeliveredAt: created.Note.DeliveredAt,
+		Details: []req.DeliveryDetailInput{{ID: &lineID, MaterialID: 1, MaterialUnitID: 1, Quantity: "0", UnitPrice: "0", Amount: &amount}},
+	})
+	if err != nil { t.Fatal(err) }
+	stored, err = s.Detail(ctx, created.Note.ID)
+	if err != nil { t.Fatal(err) }
+	if !stored.Details[0].Quantity.IsZero() || !stored.Details[0].UnitPrice.IsZero() || stored.Details[0].Amount.String() != amount { t.Fatalf("zero quantity explicit amount not retained: %#v", stored.Details[0]) }
+}

@@ -19,12 +19,14 @@ afterEach(() => { wrapper?.unmount(); vi.clearAllMocks() })
 it('keeps drafts local until successful self-setting persistence and preserves unrelated settings', async () => {
   const state = mountSettings()
   state.draft.list.columns = []
+  state.draft.list.showActions = false
   expect(mocks.user.userInfo.originSetting[DISPLAY_SETTING_KEY]).toBeUndefined()
   mocks.setSelfSetting.mockResolvedValue({ code: 0 })
   await state.save()
-  expect(mocks.setSelfSetting).toHaveBeenCalledWith({ [DISPLAY_SETTING_KEY]: expect.objectContaining({ list: { columns: [], widths: {} } }) })
+  expect(mocks.setSelfSetting).toHaveBeenCalledWith({ [DISPLAY_SETTING_KEY]: expect.objectContaining({ list: { columns: [], widths: {}, showActions: false } }) })
   expect(mocks.user.userInfo.originSetting.primaryColor).toBe('#123456')
   expect(mocks.user.userInfo.originSetting[DISPLAY_SETTING_KEY].list.columns).toEqual([])
+  expect(mocks.user.userInfo.originSetting[DISPLAY_SETTING_KEY].list.showActions).toBe(false)
   expect(state.dirty).toBe(false)
 })
 it('retains the draft and persisted settings when save fails', async () => {

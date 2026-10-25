@@ -17,7 +17,7 @@ type DecimalRule struct {
 }
 
 var (
-	QuantityRule = DecimalRule{Scale: 4, MaxInteger: 14, OutputScale: 4}
+	QuantityRule = DecimalRule{Scale: 4, MaxInteger: 14, AllowZero: true, OutputScale: 4}
 	PriceRule    = DecimalRule{Scale: 4, MaxInteger: 14, AllowZero: true, OutputScale: 4}
 	AmountRule   = DecimalRule{Scale: 2, MaxInteger: 36, AllowZero: true, OutputScale: 2}
 	FactorRule   = DecimalRule{Scale: 6, MaxInteger: 12, OutputScale: 6}
@@ -43,7 +43,7 @@ type LineAmounts struct {
 }
 
 func CalculateLine(quantity, unitPrice, factor decimal.Decimal) (LineAmounts, error) {
-	if !quantity.GreaterThan(decimal.Zero) { return LineAmounts{}, domainError(ValidationFailed, "数量必须大于0", "quantity") }
+	if quantity.IsNegative() { return LineAmounts{}, domainError(ValidationFailed, "数量不能为负数", "quantity") }
 	if unitPrice.IsNegative() { return LineAmounts{}, domainError(ValidationFailed, "单价不能为负数", "unitPrice") }
 	if !factor.GreaterThan(decimal.Zero) { return LineAmounts{}, domainError(ValidationFailed, "换算系数必须大于0", "factor") }
 	return LineAmounts{
@@ -62,6 +62,10 @@ func ResolveLinePrice(quantity decimal.Decimal, unitPrice string, amount *string
 	value, err := ParseDecimal(*amount, AmountRule, "amount")
 	if err != nil {
 		return decimal.Zero, nil, err
+	}
+	if quantity.IsZero() {
+		price, err := ParseDecimal(unitPrice, PriceRule, "unitPrice")
+		return price, &value, err
 	}
 	price := value.DivRound(quantity, 4)
 	if _, err := ParseDecimal(price.StringFixed(4), PriceRule, "unitPrice"); err != nil {

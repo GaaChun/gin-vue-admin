@@ -209,6 +209,7 @@ func (s *DeliveryState) composeDetail(noteID, brandID, line uint, input req.Deli
 			}
 			old.Quantity, old.UnitPrice, old.BaseQuantity, old.Amount = quantity, price, amounts.BaseQuantity, amounts.Amount
 			old.LineNo = line
+			old.Remark = input.Remark
 			return old, nil
 		}
 	}
@@ -231,6 +232,7 @@ func (s *DeliveryState) composeDetail(noteID, brandID, line uint, input req.Deli
 		amounts.Amount = *enteredAmount
 	}
 	detail := model.DeliveryDetail{NoteID: noteID, LineNo: line, MaterialID: material.ID, MaterialUnitID: binding.ID, UnitID: binding.UnitID, BaseUnitID: base.UnitID, CategoryID: category.ID, MaterialCodeSnapshot: material.Code, MaterialNameSnapshot: material.Name, SpecificationSnapshot: material.Specification, CategoryCodeSnapshot: category.Code, CategoryNameSnapshot: category.Name, UnitNameSnapshot: unit.Name, BaseUnitNameSnapshot: s.units[base.UnitID].Name, Factor: binding.Factor, Quantity: quantity, UnitPrice: price, BaseQuantity: amounts.BaseQuantity, Amount: amounts.Amount}
+	detail.Remark = input.Remark
 	if input.ID != nil {
 		detail.ID = *input.ID
 		detail.BusinessModel = existing[*input.ID].BusinessModel
