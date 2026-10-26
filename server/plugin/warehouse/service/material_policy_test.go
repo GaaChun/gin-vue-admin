@@ -22,6 +22,7 @@ func TestMaterialUnitSetValidation(t *testing.T) {
 	}{
 		{"zero bases", []req.MaterialUnitInput{{UnitID: 1, Factor: "1", Enabled: true}}},
 		{"multiple bases", []req.MaterialUnitInput{{UnitID: 1, Factor: "1", IsBase: true, Enabled: true}, {UnitID: 2, Factor: "1", IsBase: true, Enabled: true}}},
+		{"disabled base", []req.MaterialUnitInput{{UnitID: 1, Factor: "1", IsBase: true, Enabled: false}}},
 		{"base factor not one", []req.MaterialUnitInput{{UnitID: 1, Factor: "2", IsBase: true, Enabled: true}}},
 		{"duplicate unit", []req.MaterialUnitInput{{UnitID: 1, Factor: "1", IsBase: true, Enabled: true}, {UnitID: 1, Factor: "2", Enabled: true}}},
 		{"factor precision", []req.MaterialUnitInput{{UnitID: 1, Factor: "1.0000001", IsBase: true, Enabled: true}}},
@@ -60,6 +61,19 @@ func TestMaterialBindingReplacementPreservesMatchingID(t *testing.T) {
 	bindings := materialBindings(4, 2, []materialUnitCommand{{unitID: 1, factor: mustFactor(t, "2"), enabled: true}, {unitID: 3, factor: mustFactor(t, "1"), isBase: true, enabled: true}}, map[uint]model.MaterialUnit{1: existing})
 	if bindings[0].ID != 7 { t.Fatalf("existing binding ID = %d, want 7", bindings[0].ID) }
 	if bindings[1].ID != 0 { t.Fatalf("new binding unexpectedly retained ID %d", bindings[1].ID) }
+}
+
+func TestMaterialUnitSetAllowsSwitchingBaseAndDisablingFormerBase(t *testing.T) {
+	units, err := prepareMaterialUnits([]req.MaterialUnitInput{
+		{UnitID: 1, Factor: "0.083333", Enabled: false},
+		{UnitID: 2, Factor: "1", IsBase: true, Enabled: true},
+	})
+	if err != nil {
+		t.Fatalf("valid replacement base rejected: %v", err)
+	}
+	if units[0].isBase || units[0].enabled || !units[1].isBase || !units[1].factor.Equal(decimal.NewFromInt(1)) {
+		t.Fatalf("replacement unit set = %#v", units)
+	}
 }
 
 func mustFactor(t *testing.T, value string) decimal.Decimal {

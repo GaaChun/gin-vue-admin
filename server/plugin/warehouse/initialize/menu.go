@@ -17,7 +17,11 @@ func Menu(_ context.Context) {
 		menu("warehouseBrand", "brand", "plugin/warehouse/view/master.vue", "客户", 2),
 		menu("warehouseCategory", "category", "plugin/warehouse/view/master.vue", "物料类别", 3),
 		menu("warehouseMaterial", "material", "plugin/warehouse/view/master.vue", "物料", 4),
+		menu("warehouseDepartment", "department", "plugin/warehouse/view/department.vue", "部门", 5),
 	)
+	if err := registerDepartmentMenu(global.GVA_DB); err != nil {
+		zap.L().Error("注册部门菜单权限失败", zap.Error(err))
+	}
 	if err := global.GVA_DB.Model(&model.SysBaseMenu{}).Where("name = ?", "warehouseBrand").Update("title", "客户").Error; err != nil {
 		zap.L().Error("更新客户菜单标题失败", zap.Error(err))
 	}

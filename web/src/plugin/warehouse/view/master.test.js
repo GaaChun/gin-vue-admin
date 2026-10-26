@@ -7,13 +7,15 @@ import Master from './master.vue'
 const mocks = vi.hoisted(() => ({
   route: null,
   push: vi.fn(),
+  replace: vi.fn(),
   reserveCode: vi.fn(),
   detail: vi.fn(),
   save: vi.fn(),
   showError: vi.fn()
 }))
-vi.mock('vue-router', () => ({ useRoute: () => mocks.route, useRouter: () => ({ push: mocks.push }) }))
+vi.mock('vue-router', () => ({ useRoute: () => mocks.route, useRouter: () => ({ push: mocks.push, replace: mocks.replace }) }))
 vi.mock('@/api/user', () => ({ getUserList: async () => ({ code: 0, data: { list: [] } }) }))
+vi.mock('@/pinia/modules/user', () => ({ useUserStore: () => ({ userInfo: { ID: 1 } }) }))
 vi.mock('@/utils/format', () => ({ formatDate: value => String(value) }))
 vi.mock('../api/table-widths', () => ({ getTableWidths: async () => ({}), saveTableWidths: vi.fn() }))
 vi.mock('../api/common', () => ({
@@ -41,7 +43,7 @@ beforeEach(() => {
   mocks.route = reactive({ name: 'warehouseBrand', query: { whDetail: 'brands', whNew: '1' } })
   mocks.reserveCode.mockResolvedValue({ code: 'KH000001' })
   mocks.detail.mockResolvedValue({ id: 9, code: 'EXISTING-9', name: '原客户', mnemonic: 'YKH', version: 4 })
-  mocks.save.mockResolvedValue({})
+  mocks.save.mockImplementation(async (resource, data) => ({ ...data, id: data.id || 9, version: (data.version || 0) + 1 }))
 })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; vi.clearAllMocks() })
 function render() {

@@ -25,7 +25,7 @@
         mode="normal"
       />
       <div class="flex-1 w-0 h-full">
-        <gva-tabs v-if="config.showTabs" />
+        <gva-tabs v-if="config.showTabs" :key="cacheOwner" />
         <div
           class="overflow-auto px-2"
           :class="config.showTabs ? 'gva-container2' : 'gva-container pt-1'"
@@ -39,8 +39,8 @@
                 mode="out-in"
                 :name="route.meta.transitionType || config.transition_type"
               >
-                <keep-alive :include="routerStore.keepAliveRouters">
-                  <component :is="Component" :key="route.fullPath" />
+                <keep-alive :key="cacheOwner" :include="cachedPageNames">
+                  <component :is="routePage(Component, route)" :key="routeTabKey(route)" />
                 </keep-alive>
               </transition>
             </div>
@@ -59,12 +59,13 @@
   import GvaTabs from './tabs/index.vue'
   import BottomInfo from '@/components/bottomInfo/bottomInfo.vue'
   import { emitter } from '@/utils/bus.js'
-  import { ref, onMounted, nextTick, reactive, watchEffect } from 'vue'
-  import { useRouter, useRoute } from 'vue-router'
+  import { cloneVNode, computed, defineComponent, markRaw, onUnmounted, provide, shallowReadonly, ref, shallowRef, onMounted, nextTick, reactive, shallowReactive, watch, watchEffect } from 'vue'
+  import { useRouter, useRoute, routeLocationKey, routerViewLocationKey } from 'vue-router'
   import { useRouterStore } from '@/pinia/modules/router'
   import { useUserStore } from '@/pinia/modules/user'
   import { useAppStore } from '@/pinia'
   import { storeToRefs } from 'pinia'
+  import { accountIdentity, routeTabKey, snapshotRoute } from '@/utils/route-state'
   import '@/style/transition.scss'
   const appStore = useAppStore()
   const { config, isDark, device } = storeToRefs(appStore)
@@ -95,6 +96,40 @@
   })
 
   const userStore = useUserStore()
+  const cacheOwner = computed(() => `${accountIdentity(userStore.userInfo)}:${Boolean(userStore.token)}`)
+  const pages = shallowReactive(new Map())
+  let pageSequence = 0
+  const cachedPageNames = computed(() => [...pages.values()].map(page => page.name))
+  function routePage(component, pageRoute) {
+    if (!component) return
+    const key = routeTabKey(pageRoute)
+    if (!pages.has(key)) {
+      const ownRoute = snapshotRoute(pageRoute)
+      const name = `RouteTab${++pageSequence}`
+      const page = markRaw(defineComponent({
+        name,
+        setup() {
+          provide(routeLocationKey, shallowReadonly(ownRoute))
+          provide(routerViewLocationKey, shallowRef(ownRoute))
+          return () => cloneVNode(component)
+        }
+      }))
+      pages.set(key, { name, page })
+    }
+    return pages.get(key).page
+  }
+  watch(() => routerStore.cachedTabs, tabs => {
+    const retained = new Set(tabs.map(routeTabKey))
+    retained.add(routeTabKey(route))
+    for (const key of pages.keys()) {
+      if (!retained.has(key)) pages.delete(key)
+    }
+  })
+  watch(cacheOwner, () => pages.clear(), { flush: 'sync' })
+  onUnmounted(() => {
+    emitter.off('reload', reload)
+    if (reloadTimer) window.clearTimeout(reloadTimer)
+  })
 
   const reloadFlag = ref(true)
   let reloadTimer = null

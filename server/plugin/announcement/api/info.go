@@ -20,7 +20,7 @@ type info struct{}
 // @accept application/json
 // @Produce application/json
 // @Param data body model.Info true "创建公告"
-// @Success 200 {object} response.Response{msg=string} "创建成功"
+// @Success 200 {object} response.Response{data=model.Info,msg=string} "创建成功，返回已创建记录及ID"
 // @Router /info/createInfo [post]
 func (a *info) CreateInfo(c *gin.Context) {
 	var info model.Info
@@ -35,7 +35,7 @@ func (a *info) CreateInfo(c *gin.Context) {
 		response.FailWithMessage("创建失败", c)
 		return
 	}
-	response.OkWithMessage("创建成功", c)
+	response.OkWithDetailed(info, "创建成功", c)
 }
 
 // DeleteInfo 删除公告

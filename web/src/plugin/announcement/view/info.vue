@@ -176,8 +176,8 @@
         <div class="flex justify-between items-center">
           <span class="text-lg">{{ type === 'create' ? '添加' : '修改' }}</span>
           <div>
-            <el-button type="primary" @click="enterDialog"> 确 定 </el-button>
-            <el-button @click="closeDialog"> 取 消 </el-button>
+            <el-button type="primary" :loading="saving" @click="enterDialog"> 保 存 </el-button>
+            <el-button :disabled="saving" @click="closeDialog"> 取 消 </el-button>
           </div>
         </div>
       </template>
@@ -241,11 +241,17 @@
   // 全量引入格式化工具 请按需保留
   import { formatDate, filterDataSource } from '@/utils/format'
   import { ElMessage, ElMessageBox } from 'element-plus'
-  import { ref, reactive } from 'vue'
+  import { onUnmounted, ref, reactive } from 'vue'
+  import { useUserStore } from '@/pinia/modules/user'
+  import { accountIdentity } from '@/utils/route-state'
 
   defineOptions({
     name: 'Info'
   })
+  const userStore = useUserStore()
+  const saving = ref(false)
+  let alive = true
+  onUnmounted(() => { alive = false })
 
   // 控制更多查询条件显示/隐藏状态
   const showAllQuery = ref(false)
@@ -448,11 +454,13 @@
   // 打开弹窗
   const openDialog = () => {
     type.value = 'create'
+    formData.value = { title: '', content: '', userID: undefined, attachments: [] }
     dialogFormVisible.value = true
   }
 
   // 关闭弹窗
   const closeDialog = () => {
+    if (saving.value) return
     dialogFormVisible.value = false
     formData.value = {
       title: '',
@@ -463,29 +471,22 @@
   }
   // 弹窗确定
   const enterDialog = async () => {
-    elFormRef.value?.validate(async (valid) => {
-      if (!valid) return
-      let res
-      switch (type.value) {
-        case 'create':
-          res = await createInfo(formData.value)
-          break
-        case 'update':
-          res = await updateInfo(formData.value)
-          break
-        default:
-          res = await createInfo(formData.value)
-          break
-      }
-      if (res.code === 0) {
-        ElMessage({
-          type: 'success',
-          message: '创建/更改成功'
-        })
-        closeDialog()
-        getTableData()
-      }
-    })
+    if (saving.value) return
+    saving.value = true
+    const owner = accountIdentity(userStore.userInfo)
+    try {
+      const valid = await elFormRef.value?.validate().catch(() => false)
+      if (!valid || !alive) return
+      const creating = !(formData.value.ID || formData.value.id)
+      const res = await (creating ? createInfo(formData.value) : updateInfo(formData.value))
+      if (!alive || owner !== accountIdentity(userStore.userInfo) || res.code !== 0) return
+      if (creating) formData.value = res.data
+      type.value = 'update'
+      ElMessage({ type: 'success', message: '创建/更改成功' })
+      await getTableData()
+    } finally {
+      if (alive) saving.value = false
+    }
   }
 
   const downloadFile = (url) => {

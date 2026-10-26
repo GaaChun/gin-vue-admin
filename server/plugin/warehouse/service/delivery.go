@@ -65,6 +65,9 @@ func (s *DeliveryService) Create(ctx context.Context, actor uint, actorName stri
 			return err
 		}
 		note.Department = in.Department
+		if err := registerDeliveryDepartment(tx, actor, note.Department, s.now()); err != nil {
+			return err
+		}
 		note.Number = reservation.Number
 		note.Status = string(DeliveryDraft)
 		note.CreatedByNameSnapshot = actorName
@@ -118,6 +121,9 @@ func (s *DeliveryService) Update(ctx context.Context, actor uint, actorName stri
 			return err
 		}
 		note.Department = in.Department
+		if err := registerDeliveryDepartment(tx, actor, note.Department, s.now()); err != nil {
+			return err
+		}
 		note.BusinessModel = next.Audit
 		note.Number, note.Status, note.CreatedByNameSnapshot = current.Number, current.Status, current.CreatedByNameSnapshot
 		if in.Review {

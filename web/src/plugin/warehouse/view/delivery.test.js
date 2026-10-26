@@ -588,7 +588,7 @@ it('rounds line money before summing and derives unit price exactly from editabl
   row.amount = '10.00'
   state.clearFieldError(row, 'amount')
   expect(row.unitPrice).toBe('3.3333')
-  expect(state.validatedDetails()[0].amount).toBe('10.00')
+  expect(state.validatedDetails()[0].amount).toBe('10')
   expect(state.tableSummary({ columns: [{}, { property: 'amount' }] })).toEqual(['合计', '10.10'])
   row.unitPrice = '0.335'
   state.clearFieldError(row, 'unitPrice')

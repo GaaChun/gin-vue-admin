@@ -7,8 +7,8 @@
             <el-form-item v-for="field in group.fields" :key="field.key" :label="field.label" :data-filter-key="field.key">
               <el-input v-if="field.key === 'number'" v-model="filters.number" clearable placeholder="完整送货单号" @keyup.enter="search" />
               <el-date-picker v-else-if="field.key === 'dates'" v-model="filters.dates" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" />
-              <el-select v-else-if="field.key === 'brandId'" v-model="filters.brandId" clearable filterable default-first-option automatic-dropdown class="brand-select">
-                <el-option v-for="brand in brands" :key="idOf(brand)" :value="idOf(brand)" :label="brand.name"><div class="delivery-option-main"><span>{{ brand.name }}</span><small>{{ brand.code }}</small></div></el-option>
+              <el-select v-else-if="field.key === 'brandId'" v-model="filters.brandId" clearable filterable default-first-option automatic-dropdown :filter-method="(value) => listCustomerSearch = value" class="brand-select" @visible-change="listCustomerSearch = ''">
+                <el-option v-for="brand in filteredListBrands" :key="idOf(brand)" :value="idOf(brand)" :label="brand.name"><div class="delivery-option-main"><span>{{ brand.name }}</span><small>{{ brand.code }}</small></div></el-option>
               </el-select>
               <MaterialFilter v-else-if="field.key === 'materialIds'" v-model="filters.materialIds" :materials="materials" />
               <el-input v-else-if="field.key === 'department'" v-model="filters.department" clearable placeholder="输入部门" @keyup.enter="search" />
@@ -128,7 +128,7 @@
               </template>
               <template v-else-if="['quantity', 'unitPrice', 'amount'].includes(column.key)">
                 <span v-if="readonly || activeRowKey !== row.rowKey" class="editable-cell" @click.stop="activateCell(row, column.key)">{{ column.key === 'amount' ? rowAmount(row) : row[column.key] }}</span>
-                <el-input v-else :ref="(element) => setCellRef(row, column.key, element)" v-model="row[column.key]" :disabled="!canEdit" inputmode="decimal" @focus="selectInputText" @input="clearFieldError(row, column.key)" @blur="row[column.key] = trimDecimal(row[column.key])" @compositionstart="row.composing = true" @compositionend="row.composing = false" @keydown="cellKeydown($event, row, column.key)" />
+                <el-input v-else :ref="(element) => setCellRef(row, column.key, element)" v-model="row[column.key]" :disabled="!canEdit" inputmode="decimal" @focus="selectInputText" @input="clearFieldError(row, column.key)" @blur="commitNumber(row, column.key)" @compositionstart="row.composing = true" @compositionend="row.composing = false" @keydown="cellKeydown($event, row, column.key)" />
                 <div v-if="row.errors[column.key]" class="cell-error">{{ row.errors[column.key] }}</div>
               </template>
               <template v-else-if="column.key === 'remark'">
@@ -202,6 +202,8 @@ import { allOptions, idOf, pageSequenceNumber, request, showError } from '../api
 import { reserveMasterCode, saveMaster, suggestMasterMnemonic } from '../api/master'
 import { useTableWidths } from '../use-table-widths'
 import { DISPLAY_SETTING_KEY, FILTER_FIELDS, LIST_FIELDS, DETAIL_FIELDS, normalizeDisplaySettings, getDefaultDateRange } from '../delivery-display'
+import { calculateAmount, decimalError, deliveryCellTarget, deliveryForwardTarget, formatScaled, parseScaled, settleDeliveryNumber, trimDecimal, updateDeliveryNumber } from '../delivery-input'
+import { matchesMasterKeyword } from '../master-search'
 
 defineOptions({ name: 'WarehouseDelivery' })
 const base = '/warehouse/delivery'
@@ -383,12 +385,9 @@ const dirty = computed(() => editorOpen.value && signature() !== savedSignature.
 const detailListIndex = computed(() => notes.value.findIndex((row) => idOf(row) === idOf(note.value)))
 const canNavigatePrevious = computed(() => detailListIndex.value > 0 && !editorLoading.value && !saving.value && !actionLoading.value && !rowsLoading.value)
 const canNavigateNext = computed(() => detailListIndex.value >= 0 && detailListIndex.value < notes.value.length - 1 && !editorLoading.value && !saving.value && !actionLoading.value && !rowsLoading.value)
-const filteredBrands = computed(() => {
-  const keyword = customerSearch.value.trim().toLocaleLowerCase()
-  if (!keyword) return brands.value
-  return brands.value.filter((brand) => [brand.name, brand.mnemonic, brand.code]
-    .some((value) => String(value || '').toLocaleLowerCase().includes(keyword)))
-})
+const filteredBrands = computed(() => brands.value.filter(brand => matchesMasterKeyword(brand, customerSearch.value)))
+const listCustomerSearch = ref('')
+const filteredListBrands = computed(() => brands.value.filter(brand => matchesMasterKeyword(brand, listCustomerSearch.value)))
 function userNickname(id) {
   return usersById.value.get(Number(id)) || '—'
 }
@@ -409,22 +408,19 @@ async function loadUsers() {
 }
 async function loadDepartments() {
   try {
-    const result = await request({ url: `${base}/departments`, method: 'get' })
-    departments.value = Array.isArray(result) ? result.filter((department) => typeof department === 'string' && department.trim()) : []
+    departments.value = await allOptions('departments')
   } catch (error) {
     showError(error)
   }
 }
 function suggestDepartments(queryString, callback) {
-  const keyword = queryString.trim().toLocaleLowerCase()
   callback(departments.value
-    .filter((department) => !keyword || department.toLocaleLowerCase().includes(keyword))
-    .map((value) => ({ value })))
+    .filter(department => matchesMasterKeyword(department, queryString, ['name']))
+    .map(department => ({ value: department.name })))
 }
 function suggestQuickMaterials(queryString, callback) {
-  const keyword = queryString.trim().toLocaleLowerCase()
   callback(materials.value
-    .filter((item) => [item.code, item.name, item.mnemonic].some((value) => String(value || '').toLocaleLowerCase().includes(keyword)))
+    .filter(item => matchesMasterKeyword(item, queryString))
     .slice(0, 20)
     .map((item) => ({ ...item, value: `${item.code} ${item.name}` })))
 }
@@ -587,9 +583,8 @@ function emptyRow() {
 }
 function isEmptyRow(row) { return !row.materialId && !row.materialUnitId && !row.quantity.trim() && !row.unitPrice.trim() && !String(row.amount || '').trim() && !String(row.remark || '').trim() }
 function inlineMaterials(row) {
-  const keyword = row.keyword.trim().toLocaleLowerCase()
   return materials.value.filter((item) => (!lineCategoryIds.value || lineCategoryIds.value.has(item.categoryId)) &&
-    (!keyword || [item.code, item.name, item.mnemonic].some((value) => String(value || '').toLocaleLowerCase().includes(keyword))))
+    matchesMasterKeyword(item, row.keyword))
 }
 function bindingLabel(binding) {
   return binding.name || unitNames.value.get(binding.unitId) || `单位 #${binding.unitId}`
@@ -1074,20 +1069,6 @@ function appendLoadedMaterials(loaded) {
   pickerOpen.value = false
   return appended[0]
 }
-function parseScaled(value, scale) {
-  const match = /^(\d+)(?:\.(\d+))?$/.exec(String(value ?? '').trim())
-  if (!match || (match[2] || '').length > scale) return null
-  return BigInt(`${match[1]}${(match[2] || '').padEnd(scale, '0')}`)
-}
-function formatScaled(value, scale) {
-  const digits = value.toString().padStart(scale + 1, '0')
-  return `${digits.slice(0, -scale)}.${digits.slice(-scale)}`
-}
-function calculateAmount(quantityValue, priceValue) {
-  const quantity = parseScaled(quantityValue, 4), price = parseScaled(priceValue, 4)
-  if (quantity === null || price === null) return undefined
-  return formatScaled((quantity * price + BigInt(500000)) / BigInt(1000000), 2)
-}
 function rowAmount(row) {
   return compactAmount(row.amountEdited ? row.amount : calculateAmount(row.quantity, row.unitPrice))
 }
@@ -1096,26 +1077,20 @@ function compactAmount(value) {
 }
 function clearFieldError(row, field) {
   delete row.errors[field]
+  Object.assign(row, updateDeliveryNumber(row, field))
   if (field === 'amount') {
-    row.amountEdited = true
-    const amount = parseScaled(row.amount, 2), quantity = parseScaled(row.quantity, 4)
-    if (amount === null || quantity === null || quantity === BigInt(0)) return
-    row.unitPrice = trimDecimal(formatScaled((amount * BigInt(1000000) + quantity / BigInt(2)) / quantity, 4))
-    delete row.errors.unitPrice
-  } else {
-    row.amountEdited = false
-    row.amount = compactAmount(calculateAmount(row.quantity, row.unitPrice))
-    delete row.errors.amount
-  }
+    if (parseScaled(row.unitPrice, 4) !== null) delete row.errors.unitPrice
+  } else delete row.errors.amount
+}
+function commitNumber(row, field) {
+  // Do not turn a completely untouched trailing row into a zero-valued detail.
+  if (!row.materialId && isEmptyRow(row)) return
+  Object.assign(row, settleDeliveryNumber(row, field))
+  if (!decimalError(row[field], field)) delete row.errors[field]
 }
 function validateDecimal(row, field) {
-  const value = String(row[field] ?? '').trim()
-  const label = { quantity: '数量', unitPrice: '单价', amount: '金额' }[field]
-  const scale = field === 'amount' ? 2 : 4
-  const integerDigits = field === 'amount' ? 18 : 14
-  let message = ''
-  if (!value) message = `请输入${label}`
-  else if (!new RegExp(`^(0|[1-9]\\d{0,${integerDigits - 1}})(\\.\\d{1,${scale}})?$`).test(value)) message = `${label}须为普通十进制数，整数最多${integerDigits}位、小数最多${scale}位`
+  Object.assign(row, settleDeliveryNumber(row, field))
+  const message = decimalError(row[field], field)
   if (message) row.errors[field] = message
   else delete row.errors[field]
   return !message
@@ -1124,13 +1099,13 @@ function cellKeydown(event, row, field) {
   if (!canEdit.value || event.isComposing || row.composing || event.keyCode === 229 || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return
   if (!['Enter', 'Tab'].includes(event.key)) return
   const fields = editingFields.value
-  const index = fields.indexOf(field)
-  const previousField = fields.slice(0, index).reverse().find((key) => key !== 'remark')
-  const nextField = fields.slice(index + 1).find((key) => key !== 'remark')
   const orderedRows = displayRows.value
   const rowIndex = orderedRows.findIndex((item) => item.rowKey === row.rowKey)
+  const destination = event.shiftKey
+    ? deliveryCellTarget(fields, field, true, !!row.materialId)
+    : deliveryForwardTarget(fields, field, !!row.materialId, rowIndex < orderedRows.length - 1)
   if (event.shiftKey) {
-    const target = previousField ? row : orderedRows[rowIndex - 1]
+    const target = destination.rowOffset ? orderedRows[rowIndex + destination.rowOffset] : row
     if (!target) return
     event.preventDefault()
     event.stopImmediatePropagation?.()
@@ -1139,7 +1114,8 @@ function cellKeydown(event, row, field) {
       if (select) select.expanded = false
       select?.blur?.()
     }
-    focusCell(target, previousField || fields.filter((key) => key !== 'remark').at(-1))
+    if (['quantity', 'unitPrice', 'amount'].includes(field)) commitNumber(row, field)
+    focusCell(target, destination.field)
     return
   }
   // Let ElSelect confirm its highlighted option and close its own popper.
@@ -1153,16 +1129,20 @@ function cellKeydown(event, row, field) {
   if (field === 'unit' && row.unitOpen) return
   if (field === 'material' && !row.materialId) return
   if (field === 'unit' && !row.materialUnitId) return
+  if (!row.materialId && !destination.rowOffset && destination.field === 'material') {
+    event.preventDefault()
+    focusCell(row, 'material')
+    return
+  }
   if (['quantity', 'unitPrice', 'amount'].includes(field) && !validateDecimal(row, field)) { event.preventDefault(); focusCell(row, field); return }
   event.preventDefault()
-  if (nextField) focusCell(row, nextField)
+  if (!destination.rowOffset) focusCell(row, destination.field)
   else {
-    let target = orderedRows[rowIndex + 1]
-    if (!target) { target = emptyRow(); rows.value.push(target) }
-    focusCell(target, fields.find((key) => key !== 'remark'))
+    let target = orderedRows[rowIndex + destination.rowOffset]
+    if (destination.append) { target = emptyRow(); rows.value.push(target) }
+    focusCell(target, destination.field)
   }
 }
-function trimDecimal(value) { return String(value).replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1') }
 function validatedDetails() {
   const submitted = [...rows.value]
   while (submitted.length && isEmptyRow(submitted.at(-1))) submitted.pop()

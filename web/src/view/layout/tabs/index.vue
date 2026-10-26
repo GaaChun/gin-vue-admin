@@ -59,6 +59,7 @@
   import { useRoute, useRouter } from 'vue-router'
   import { useUserStore } from '@/pinia/modules/user'
   import { fmtTitle } from '@/utils/fmtRouterTitle'
+  import { accountIdentity, isCreatedEditorRoute, routeTabKey, snapshotRoute } from '@/utils/route-state'
 
   defineOptions({
     name: 'HistoryComponent'
@@ -67,8 +68,12 @@
   const route = useRoute()
   const router = useRouter()
 
-  const getFmtString = (item) => {
-    return item.name + JSON.stringify(item.query) + JSON.stringify(item.params)
+  const getFmtString = routeTabKey
+  let previousRoute = snapshotRoute(route)
+  const listeners = []
+  const listen = (event, handler) => {
+    emitter.on(event, handler)
+    listeners.push([event, handler])
   }
 
   const historys = ref([])
@@ -163,28 +168,7 @@
     router.push(right)
     sessionStorage.setItem('historys', JSON.stringify(historys.value))
   }
-  const isSame = (route1, route2) => {
-    if (route1.name !== route2.name) {
-      return false
-    }
-    if (
-      Object.keys(route1.query).length !== Object.keys(route2.query).length ||
-      Object.keys(route1.params).length !== Object.keys(route2.params).length
-    ) {
-      return false
-    }
-    for (const key in route1.query) {
-      if (route1.query[key] !== route2.query[key]) {
-        return false
-      }
-    }
-    for (const key in route1.params) {
-      if (route1.params[key] !== route2.params[key]) {
-        return false
-      }
-    }
-    return true
-  }
+  const isSame = (first, second) => routeTabKey(first) === routeTabKey(second)
   const setTab = (route) => {
     if (!historys.value.some((item) => isSame(item, route))) {
       const obj = {}
@@ -193,6 +177,7 @@
       delete obj.meta.matched
       obj.query = route.query
       obj.params = route.params
+      obj.hash = route.hash || ''
       historys.value.push(obj)
     }
     window.sessionStorage.setItem('activeValue', getFmtString(route))
@@ -207,7 +192,8 @@
     router.push({
       name: tab.name,
       query: tab.query,
-      params: tab.params
+      params: tab.params,
+      hash: tab.hash || ''
     })
   }
   const removeTab = (tab) => {
@@ -220,13 +206,15 @@
           router.push({
             name: historys.value[index + 1].name,
             query: historys.value[index + 1].query,
-            params: historys.value[index + 1].params
+            params: historys.value[index + 1].params,
+            hash: historys.value[index + 1].hash || ''
           })
         } else {
           router.push({
             name: historys.value[index - 1].name,
             query: historys.value[index - 1].query,
-            params: historys.value[index - 1].params
+            params: historys.value[index - 1].params,
+            hash: historys.value[index - 1].hash || ''
           })
         }
       }
@@ -250,17 +238,22 @@
   )
 
   watch(
-    () => route,
-    (to) => {
+    () => route.fullPath,
+    () => {
+      const to = route
       if (to.name === 'Login' || to.name === 'Reload') {
         return
       }
+      if (isCreatedEditorRoute(previousRoute, to)) {
+        historys.value = historys.value.filter(item => !isSame(item, previousRoute))
+      }
+      previousRoute = snapshotRoute(to)
       historys.value = historys.value.filter((item) => !item.meta.closeTab)
       setTab(to)
       sessionStorage.setItem('historys', JSON.stringify(historys.value))
       activeValue.value = window.sessionStorage.getItem('activeValue')
     },
-    { deep: true }
+    { flush: 'post' }
   )
 
   watch(
@@ -280,21 +273,21 @@
 
   const initPage = () => {
     // 全局监听 关闭当前页面函数
-    emitter.on('closeThisPage', () => {
+    listen('closeThisPage', () => {
       removeTab(getFmtString(route))
     })
     // 全局监听 关闭所有页面函数
-    emitter.on('closeAllPage', () => {
+    listen('closeAllPage', () => {
       closeAll()
     })
-    emitter.on('mobile', (data) => {
+    listen('mobile', (data) => {
       isMobile.value = data
     })
-    emitter.on('collapse', (data) => {
+    listen('collapse', (data) => {
       isCollapse.value = data
     })
 
-    emitter.on('setQuery', (data) => {
+    listen('setQuery', (data) => {
       const index = historys.value.findIndex(
         (item) => getFmtString(item) === activeValue.value
       )
@@ -310,7 +303,7 @@
       sessionStorage.setItem('historys', JSON.stringify(historys.value))
     })
 
-    emitter.on('switchTab', async (data) => {
+    listen('switchTab', async (data) => {
       const index = historys.value.findIndex((item) => item.name === data.name)
       if (index < 0) {
         return
@@ -327,6 +320,12 @@
       await nextTick()
       router.push(historys.value[index])
     })
+    const owner = accountIdentity(userStore.userInfo)
+    if (sessionStorage.getItem('historyOwner') !== owner) {
+      sessionStorage.removeItem('historys')
+      sessionStorage.removeItem('activeValue')
+      sessionStorage.setItem('historyOwner', owner)
+    }
     const initHistorys = [
       {
         name: defaultRouter.value,
@@ -337,9 +336,9 @@
         params: {}
       }
     ]
-    setTab(route)
     historys.value =
       JSON.parse(sessionStorage.getItem('historys')) || initHistorys
+    setTab(route)
     if (!window.sessionStorage.getItem('activeValue')) {
       activeValue.value = getFmtString(route)
     } else {
@@ -353,8 +352,7 @@
   initPage()
 
   onUnmounted(() => {
-    emitter.off('collapse')
-    emitter.off('mobile')
+    listeners.forEach(([event, handler]) => emitter.off(event, handler))
   })
 
   const middleCloseTab = (e) => {

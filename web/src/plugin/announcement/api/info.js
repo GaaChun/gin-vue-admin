@@ -6,7 +6,7 @@ import service from '@/utils/request'
 // @accept application/json
 // @Produce application/json
 // @Param data body model.Info true "创建公告"
-// @Success 200 {string} string "{"success":true,"data":{},"msg":"创建成功"}"
+// @Success 200 {object} response.Response{data=model.Info,msg=string} "创建成功，data.ID为已创建记录ID"
 // @Router /info/createInfo [post]
 export const createInfo = (data) => {
   return service({

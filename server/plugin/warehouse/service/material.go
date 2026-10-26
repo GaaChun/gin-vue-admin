@@ -345,10 +345,6 @@ func (s *MasterService) replaceMaterialUnits(tx *gorm.DB, materialID, actor uint
 	for _, binding := range existing {
 		byUnit[binding.UnitID] = binding
 	}
-	var referenced int64
-	if err := tx.Model(&model.DeliveryDetail{}).Where("material_id = ?", materialID).Count(&referenced).Error; err != nil {
-		return err
-	}
 	oldBase, newBase := uint(0), uint(0)
 	for _, binding := range existing {
 		if binding.IsBase && binding.Enabled {
@@ -359,9 +355,6 @@ func (s *MasterService) replaceMaterialUnits(tx *gorm.DB, materialID, actor uint
 		if command.isBase {
 			newBase = command.unitID
 		}
-	}
-	if referenced > 0 && oldBase != newBase {
-		return NewDomainError(ReferenceInUse, "被送货明细引用的物料不能更换基本单位")
 	}
 	if oldBase != 0 && oldBase != newBase {
 		// Clear first so the final complete-set update never transiently violates the one-base key.

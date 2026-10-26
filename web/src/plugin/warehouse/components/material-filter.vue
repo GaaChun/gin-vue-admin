@@ -39,6 +39,7 @@
 import { computed, nextTick, ref } from 'vue'
 import { ClickOutside as vClickOutside } from 'element-plus'
 import { idOf } from '../api/common'
+import { matchesMasterKeyword, materialSelectionSummary } from '../master-search'
 
 const props = defineProps({
   modelValue: { type: Array, default: () => [] },
@@ -51,12 +52,9 @@ const keyword = ref('')
 const searchInput = ref(null)
 const panel = ref(null)
 const selectedIds = computed(() => new Set(props.modelValue))
-const summary = computed(() => props.modelValue.length ? `已选 ${props.modelValue.length} 种物料` : '')
+const summary = computed(() => materialSelectionSummary(props.modelValue, props.materials))
 const selectedMaterials = computed(() => props.materials.filter(material => selectedIds.value.has(idOf(material))))
-const candidates = computed(() => {
-  const search = keyword.value.trim().toLocaleLowerCase()
-  return props.materials.filter((material) => !search || [material.name, material.code, material.mnemonic].some((value) => String(value || '').toLocaleLowerCase().includes(search)))
-})
+const candidates = computed(() => props.materials.filter(material => matchesMasterKeyword(material, keyword.value)))
 async function focusSearch() {
   await nextTick()
   if (open.value) searchInput.value?.focus()

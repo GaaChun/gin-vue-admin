@@ -32,7 +32,7 @@ func persistedDeliveryFixture(t *testing.T) (*gorm.DB, *DeliveryService) {
 	if err != nil { t.Fatal(err) }
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.AutoMigrate(&model.Brand{}, &model.Category{}, &model.Material{}, &model.Unit{}, &model.MaterialUnit{}, &sqliteDeliveryNote{}, &model.DeliveryDetail{}, &model.NumberCounter{}, &model.NumberReservation{}); err != nil { t.Fatal(err) }
+	if err := db.AutoMigrate(&model.Brand{}, &model.Category{}, &model.Material{}, &model.Unit{}, &model.MaterialUnit{}, &model.Department{}, &model.DepartmentImport{}, &sqliteDeliveryNote{}, &model.DeliveryDetail{}, &model.NumberCounter{}, &model.NumberReservation{}); err != nil { t.Fatal(err) }
 	if err := db.Exec("CREATE TABLE sys_users (id integer PRIMARY KEY, nick_name text)").Error; err != nil { t.Fatal(err) }
 	if err := db.Exec("INSERT INTO sys_users (id, nick_name) VALUES (4, '修改人')").Error; err != nil { t.Fatal(err) }
 	fixture := deliveryFixture(time.Date(2026, 10, 25, 2, 0, 0, 0, time.UTC))

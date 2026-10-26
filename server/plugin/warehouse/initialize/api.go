@@ -3,8 +3,11 @@ package initialize
 import (
 	"context"
 
+	"github.com/flipped-aurora/gin-vue-admin/server/global"
 	model "github.com/flipped-aurora/gin-vue-admin/server/model/system"
 	"github.com/flipped-aurora/gin-vue-admin/server/plugin/plugin-tool/utils"
+	apputils "github.com/flipped-aurora/gin-vue-admin/server/utils"
+	"go.uber.org/zap"
 )
 
 func Api(_ context.Context) {
@@ -34,6 +37,11 @@ func Api(_ context.Context) {
 		api("PUT", "/warehouse/schemes/update", "修改报表方案"),
 		api("DELETE", "/warehouse/schemes/delete", "删除报表方案"),
 		api("POST", "/warehouse/schemes/publish", "管理共享报表方案"),
+		api("GET", "/warehouse/master/departments/list", "查询部门"),
+		api("GET", "/warehouse/master/departments/detail", "查询部门详情"),
+		api("POST", "/warehouse/master/departments/create", "创建部门"),
+		api("PUT", "/warehouse/master/departments/update", "更新部门"),
+		api("DELETE", "/warehouse/master/departments/delete", "删除部门"),
 	}
 	for _, resource := range []struct{ path, label string }{
 		{"units", "单位"}, {"brands", "客户"}, {"categories", "类别"}, {"materials", "物料"},
@@ -51,6 +59,13 @@ func Api(_ context.Context) {
 		)
 	}
 	utils.RegisterApis(entities...)
+	if err := registerDepartmentPermissions(global.GVA_DB); err != nil {
+		zap.L().Error("追加部门接口权限失败", zap.Error(err))
+	} else if enforcer := apputils.GetCasbin(); enforcer != nil {
+		if err := enforcer.LoadPolicy(); err != nil {
+			zap.L().Error("重新加载部门接口权限失败", zap.Error(err))
+		}
+	}
 }
 
 func api(method, path, description string) model.SysApi {

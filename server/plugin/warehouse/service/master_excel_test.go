@@ -156,6 +156,45 @@ func TestMaterialImportPreservesReferencedBindingAndCreationAudit(t *testing.T) 
 	}
 }
 
+func TestMaterialImportCanReplaceUnreferencedBase(t *testing.T) {
+	state := NewMasterExcelState()
+	oldUnit := state.AddUnit("个", 1)
+	newUnit := state.AddUnit("箱", 1)
+	material := state.AddMaterial(model.Material{Code: "M001", Name: "物料", Mnemonic: "wl"}, []model.MaterialUnit{{UnitID: oldUnit.ID, Factor: decimal.NewFromInt(1), IsBase: true, Enabled: true}}, 1)
+	oldBinding := onlyBindingID(state)
+	contents := workbookWithSheets(t, map[string][][]string{
+		"物料": {{"编号*", "物料名称*", "助记符*", "规格", "别名", "客户编号", "类别编号", "图片文件ID", "版本号"}, {"M001", "物料", "wl", "", "", "", "", "", "1"}},
+		"物料单位": {{"物料编号*", "单位名称*", "换算系数*", "是否基本单位*", "是否启用*"}, {"M001", "箱", "1", "是", "是"}},
+	})
+	if _, err := state.Import("materials", contents, 8); err != nil { t.Fatal(err) }
+	if _, exists := state.bindings[oldBinding]; exists { t.Fatal("omitted former base was restored") }
+	binding := bindingFor(state, material.ID, newUnit.ID)
+	if !binding.IsBase || !binding.Enabled || !binding.Factor.Equal(decimal.NewFromInt(1)) { t.Fatalf("new base = %#v", binding) }
+}
+
+func TestMaterialImportRejectsInvalidReplacementBases(t *testing.T) {
+	for _, tc := range []struct { name string; rows [][]string }{
+		{"missing", [][]string{{"M001", "个", "1", "否", "是"}}},
+		{"multiple", [][]string{{"M001", "个", "1", "是", "是"}, {"M001", "箱", "1", "是", "是"}}},
+		{"disabled", [][]string{{"M001", "个", "1", "是", "否"}}},
+		{"factor", [][]string{{"M001", "个", "2", "是", "是"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := NewMasterExcelState()
+			unit := state.AddUnit("个", 1)
+			state.AddUnit("箱", 1)
+			material := state.AddMaterial(model.Material{Code: "M001", Name: "原物料", Mnemonic: "wl"}, []model.MaterialUnit{{UnitID: unit.ID, Factor: decimal.NewFromInt(1), IsBase: true, Enabled: true}}, 1)
+			unitRows := append([][]string{{"物料编号*", "单位名称*", "换算系数*", "是否基本单位*", "是否启用*"}}, tc.rows...)
+			contents := workbookWithSheets(t, map[string][][]string{
+				"物料": {{"编号*", "物料名称*", "助记符*", "规格", "别名", "客户编号", "类别编号", "图片文件ID", "版本号"}, {"M001", "不能提交", "wl", "", "", "", "", "", "1"}},
+				"物料单位": unitRows,
+			})
+			if _, err := state.Import("materials", contents, 8); err == nil { t.Fatal("invalid replacement base accepted") }
+			if state.materials[material.ID].Version != 1 || state.materials[material.ID].Name != "原物料" || !bindingFor(state, material.ID, unit.ID).IsBase { t.Fatal("invalid replacement changed material") }
+		})
+	}
+}
+
 func TestMaterialImportAllowsBlankCustomerAndCategory(t *testing.T) {
 	state := NewMasterExcelState()
 	unit := state.AddUnit("个", 1)

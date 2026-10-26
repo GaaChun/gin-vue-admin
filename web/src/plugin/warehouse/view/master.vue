@@ -82,8 +82,8 @@
           <template v-if="resource !== 'units'">
             <el-form-item label="编号" prop="code" required :error="errors.code"><el-input v-model="form.code" maxlength="64" show-word-limit /></el-form-item>
             <el-form-item label="助记符" prop="mnemonic" required :error="errors.mnemonic">
-              <el-input v-model="form.mnemonic" maxlength="100" @input="editMnemonic"><template #append><el-button :loading="mnemonicLoading" @click="suggestMnemonic(true)">重新生成</el-button></template></el-input>
-              <div class="field-hint">根据名称生成；手动修改后不再自动覆盖。</div>
+              <el-input v-model="form.mnemonic" maxlength="100" placeholder="可输入多个助记符" @input="editMnemonic"><template #append><el-button :loading="mnemonicLoading" @click="suggestMnemonic(true)">重新生成</el-button></template></el-input>
+              <div class="field-hint">可用逗号、中文逗号、分号或空白分隔多个助记符，任一项均可查询；手动修改后不再自动覆盖。</div>
             </el-form-item>
           </template>
           <el-form-item v-if="isCategory" label="上级类别" prop="parentId" :error="errors.parentId">
@@ -147,18 +147,26 @@
 </template>
 
 <script setup>
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onDeactivated, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getUserList } from '@/api/user'
 import { formatDate } from '@/utils/format'
 import { getUrl } from '@/utils/image'
+import { useUserStore } from '@/pinia/modules/user'
+import { accountIdentity, savedMasterRoute } from '@/utils/route-state'
+import { masterEditorValues } from '../master-editor'
+import { matchesMasterKeyword } from '../master-search'
 import { allOptions, idOf, pageSequenceNumber, showError } from '../api/common'
 import { deleteMaster, detailMaster, downloadMasterTemplate, exportMaster, getCategoryTree, importMaster, listMaster, reserveMasterCode, saveMaster, suggestMasterMnemonic, uploadMasterImage } from '../api/master'
 
 import { useTableWidths } from '../use-table-widths'
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
+const account = computed(() => accountIdentity(userStore.userInfo))
+let viewActive = true
+let activated = false
 const resource = computed(() => {
   const names = { warehouseUnit: 'units', warehouseBrand: 'brands', warehouseCategory: 'categories', warehouseMaterial: 'materials' }
   const aliases = { unit: 'units', units: 'units', brand: 'brands', brands: 'brands', category: 'categories', categories: 'categories', material: 'materials', materials: 'materials' }
@@ -271,7 +279,7 @@ function currentFilters() {
 }
 function filterCategories(nodes, keyword) {
   return nodes.reduce((result, node) => {
-    const matches = !keyword || [node.code, node.name, node.mnemonic].some(value => String(value || '').toLocaleLowerCase().includes(keyword))
+    const matches = matchesMasterKeyword(node, keyword)
     const children = matches ? node.children || [] : filterCategories(node.children || [], keyword)
     if (matches || children.length) result.push({ ...node, children })
     return result
@@ -357,7 +365,7 @@ function query() { page.value = 1; return load() }
 function changePageSize() { page.value = 1; return load() }
 function resetSearch() { Object.assign(search, { keyword: '', brandId: undefined, categoryId: undefined }); categoryTreeRef.value?.setCurrentKey(0); return query() }
 function selectCategory(node) { search.categoryId = node.id || undefined; query() }
-function filterTreeNode(value, node) { return !value || [node.name, node.code, node.mnemonic].some(text => String(text || '').toLocaleLowerCase().includes(value.toLocaleLowerCase())) }
+function filterTreeNode(value, node) { return matchesMasterKeyword(node, value) }
 watch(treeKeyword, value => categoryTreeRef.value?.filter(value))
 
 async function initializeEditor(row, parentId = 0) {
@@ -382,12 +390,7 @@ async function initializeEditor(row, parentId = 0) {
     if (row) {
       const detail = await detailMaster(resource.value, idOf(row))
       if (sequence !== editorSequence) return
-      Object.assign(form, {
-        id: idOf(detail), version: detail.version, name: detail.name || '', code: detail.code || '', mnemonic: detail.mnemonic || '',
-        parentId: detail.parentId || 0, brandId: detail.brandId, categoryId: detail.categoryId,
-        specification: detail.specification || '', alias: detail.alias || '', imageFileId: detail.imageFileId || null,
-        units: (detail.units || []).map(unit => ({ rowKey: `unit-${++nextUnitKey}`, unitId: unit.unitId, factor: String(unit.factor), isBase: unit.isBase, enabled: unit.enabled }))
-      })
+      Object.assign(form, masterEditorValues(detail))
       audit.value = detail
       imageUrl.value = detail.imageUrl ? getUrl(detail.imageUrl) : ''
       mnemonicManual.value = Boolean(detail.mnemonic)
@@ -486,22 +489,31 @@ async function save() {
   saving.value = true
   saveError.value = ''
   conflictVersion.value = null
+  const owner = account.value
+  const sequence = editorSequence
   try {
     if (!mnemonicManual.value) await suggestMnemonic()
     if (!validate()) { await locateError(); return }
-    await saveMaster(resource.value, writePayload())
-    ++editorSequence
-    await router.push({ name: route.name, query: listRouteQuery() })
+    const detail = await saveMaster(resource.value, writePayload())
+    if (owner !== account.value || sequence !== editorSequence) return
+    Object.assign(form, masterEditorValues(detail))
+    audit.value = detail
+    imageUrl.value = detail.imageUrl ? getUrl(detail.imageUrl) : ''
+    mnemonicManual.value = Boolean(detail.mnemonic)
+    cleanSnapshot = JSON.stringify(form)
     ElMessage.success('保存成功')
-    await load()
+    if (viewActive && route.query.whNew === '1') {
+      await router.replace(savedMasterRoute(route, resource.value, form.id))
+    }
   } catch (error) {
+    if (owner !== account.value || sequence !== editorSequence) return
     const business = error.business || {}
     saveError.value = error.message || '保存失败，编辑内容已保留'
     if (business.errorCode === 'VERSION_CONFLICT') conflictVersion.value = business.currentVersion
     if (business.field && business.field !== 'version') errors.value = { [business.field]: saveError.value }
     showError(error)
     await locateError()
-  } finally { saving.value = false }
+  } finally { if (owner === account.value && sequence === editorSequence) saving.value = false }
 }
 async function remove(row) {
   try {
@@ -628,6 +640,31 @@ watch(() => [route.query.whDetail, route.query.whId, route.query.whNew, route.qu
   const selected = id ? { ID: Number(id) } : null
   await initializeEditor(selected, Number(parent) || 0)
 }, { immediate: true })
+onActivated(() => {
+  viewActive = true
+  if (form.id && route.query.whNew === '1') {
+    router.replace(savedMasterRoute(route, resource.value, form.id))
+  } else if (activated && !detailRoute.value) {
+    refreshOptions().catch(showError)
+    load()
+  }
+  activated = true
+})
+onDeactivated(() => { viewActive = false })
+function invalidateSession() {
+  ++editorSequence
+  ++listSequence
+  ++mnemonicSequence
+  Object.assign(form, emptyForm())
+  Object.assign(search, { keyword: '', brandId: undefined, categoryId: undefined })
+  rows.value = []
+  audit.value = {}
+  imageUrl.value = ''
+  saving.value = false
+  detailLoading.value = false
+}
+watch(account, invalidateSession, { flush: 'sync' })
+onUnmounted(invalidateSession)
 </script>
 
 <style scoped>

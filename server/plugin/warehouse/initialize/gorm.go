@@ -9,6 +9,7 @@ import (
 
 	"github.com/flipped-aurora/gin-vue-admin/server/global"
 	"github.com/flipped-aurora/gin-vue-admin/server/plugin/warehouse/model"
+	"github.com/flipped-aurora/gin-vue-admin/server/plugin/warehouse/service"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -55,7 +56,7 @@ func migrateWarehouseSchema(db *gorm.DB) error {
 		new(model.Unit), new(model.Brand), new(model.Category), new(model.Material),
 		new(model.MaterialUnit), new(model.MaterialImage), new(model.DeliveryNote),
 		new(model.DeliveryDetail), new(model.NumberCounter), new(model.NumberReservation),
-		new(model.ReportScheme), new(model.MasterCodeCounter),
+		new(model.ReportScheme), new(model.MasterCodeCounter), new(model.Department), new(model.DepartmentImport),
 	); err != nil {
 		return fmt.Errorf("auto-migrate warehouse tables: %w", err)
 	}
@@ -81,7 +82,7 @@ func migrateWarehouseSchema(db *gorm.DB) error {
 			return fmt.Errorf("add index %s.%s: %w", index.table, index.name, err)
 		}
 	}
-	return nil
+	return service.ImportHistoricalDepartments(db)
 }
 
 func validateGeneratedColumnSupport(version string) error {
@@ -109,7 +110,7 @@ func warehouseTables() []string {
 		"wh_units", "wh_brands", "wh_categories", "wh_materials",
 		"wh_material_units", "wh_material_images", "wh_delivery_notes",
 		"wh_delivery_details", "wh_number_counters", "wh_number_reservations",
-		"wh_report_schemes", "wh_master_code_counters",
+		"wh_report_schemes", "wh_master_code_counters", "wh_departments",
 	}
 }
 
@@ -117,6 +118,7 @@ func warehouseTables() []string {
 func warehouseSchemaColumns() []schemaColumn {
 	return []schemaColumn{
 		{"wh_units", "active_name_key", "varchar(100) GENERATED ALWAYS AS (CASE WHEN deleted_at IS NULL THEN LOWER(TRIM(name)) ELSE NULL END) STORED"},
+		{"wh_departments", "active_name_key", "varchar(100) GENERATED ALWAYS AS (CASE WHEN deleted_at IS NULL THEN LOWER(TRIM(name)) ELSE NULL END) STORED"},
 		{"wh_brands", "active_name_key", "varchar(100) GENERATED ALWAYS AS (CASE WHEN deleted_at IS NULL THEN LOWER(TRIM(name)) ELSE NULL END) STORED"},
 		{"wh_brands", "active_code_key", "varchar(64) GENERATED ALWAYS AS (CASE WHEN deleted_at IS NULL THEN LOWER(TRIM(code)) ELSE NULL END) STORED"},
 		{"wh_categories", "active_code_key", "varchar(64) GENERATED ALWAYS AS (CASE WHEN deleted_at IS NULL THEN LOWER(TRIM(code)) ELSE NULL END) STORED"},
@@ -133,6 +135,7 @@ func warehouseSchemaColumns() []schemaColumn {
 func warehouseSchemaIndexes() []schemaIndex {
 	return []schemaIndex{
 		{"wh_units", "uk_wh_units_active_name", "CREATE UNIQUE INDEX `uk_wh_units_active_name` ON `wh_units` (`active_name_key`)"},
+		{"wh_departments", "uk_wh_departments_active_name", "CREATE UNIQUE INDEX `uk_wh_departments_active_name` ON `wh_departments` (`active_name_key`)"},
 		{"wh_brands", "uk_wh_brands_active_name", "CREATE UNIQUE INDEX `uk_wh_brands_active_name` ON `wh_brands` (`active_name_key`)"},
 		{"wh_brands", "uk_wh_brands_active_code", "CREATE UNIQUE INDEX `uk_wh_brands_active_code` ON `wh_brands` (`active_code_key`)"},
 		{"wh_categories", "uk_wh_categories_active_code", "CREATE UNIQUE INDEX `uk_wh_categories_active_code` ON `wh_categories` (`active_code_key`)"},

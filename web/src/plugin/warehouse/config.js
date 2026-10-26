@@ -5,6 +5,7 @@ export default {
     brand: 'plugin/warehouse/view/master.vue',
     category: 'plugin/warehouse/view/master.vue',
     material: 'plugin/warehouse/view/master.vue',
+    department: 'plugin/warehouse/view/department.vue',
     delivery: 'plugin/warehouse/view/delivery.vue',
     deliveryDisplaySettings: 'plugin/warehouse/view/delivery-display-settings.vue',
     reconciliation: 'plugin/warehouse/view/reconciliation.vue',

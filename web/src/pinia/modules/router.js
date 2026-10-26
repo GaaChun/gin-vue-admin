@@ -5,7 +5,6 @@ import { defineStore } from 'pinia'
 import { ref, watchEffect } from 'vue'
 import pathInfo from '@/pathInfo.json'
 import {useRoute} from "vue-router";
-import {config} from "@/core/config.js";
 
 const notLayoutRouterArr = []
 const keepAliveRoutersArr = []
@@ -51,31 +50,17 @@ const KeepAliveFilter = (routes) => {
 
 export const useRouterStore = defineStore('router', () => {
   const keepAliveRouters = ref([])
+  const cachedTabs = ref([])
   const asyncRouterFlag = ref(0)
   const setKeepAliveRouters = (history) => {
-    const keepArrTemp = []
-    
-    // 1. 首先添加原有的keepAlive配置
-    keepArrTemp.push(...keepAliveRoutersArr)
-    if (config.keepAliveTabs) {
-      history.forEach((item) => {
-        // 2. 为所有history中的路由强制启用keep-alive
-        // 通过routeMap获取路由信息，然后通过pathInfo获取组件名
-        const routeInfo = routeMap[item.name]
-        if (routeInfo && routeInfo.meta && routeInfo.meta.path) {
-          const componentName = pathInfo[routeInfo.meta.path]
-          if (componentName) {
-            keepArrTemp.push(componentName)
-          }
-        }
-        
-        // 3. 如果子路由在tabs中打开，父路由也需要keepAlive
-        if (nameMap[item.name]) {
-          keepArrTemp.push(nameMap[item.name])
-        }
-      })
-    }
-    keepAliveRouters.value = Array.from(new Set(keepArrTemp))
+    cachedTabs.value = history.map(item => ({ name: item.name, query: { ...item.query }, params: { ...item.params }, hash: item.hash || '' }))
+    const names = [...keepAliveRoutersArr]
+    history.forEach(item => {
+      const componentName = pathInfo[routeMap[item.name]?.meta?.path]
+      if (componentName) names.push(componentName)
+      if (nameMap[item.name]) names.push(nameMap[item.name])
+    })
+    keepAliveRouters.value = [...new Set(names)]
   }
 
   // 处理组件缓存
@@ -158,6 +143,13 @@ export const useRouterStore = defineStore('router', () => {
   // 从后台获取动态路由
   const SetAsyncRouter = async () => {
     asyncRouterFlag.value++
+    notLayoutRouterArr.length = 0
+    keepAliveRoutersArr.length = 0
+    for (const key of Object.keys(nameMap)) delete nameMap[key]
+    for (const key of Object.keys(routeMap)) delete routeMap[key]
+    for (const key of Object.keys(menuMap)) delete menuMap[key]
+    cachedTabs.value = []
+    keepAliveRouters.value = []
     const baseRouter = [
       {
         path: '/layout',
@@ -200,6 +192,7 @@ export const useRouterStore = defineStore('router', () => {
     leftMenu,
     asyncRouters,
     keepAliveRouters,
+    cachedTabs,
     asyncRouterFlag,
     SetAsyncRouter,
     routeMap,

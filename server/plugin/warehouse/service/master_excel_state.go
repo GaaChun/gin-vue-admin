@@ -383,26 +383,8 @@ func (s *MasterExcelState) replaceMaterialBindings(materialID uint, commands []n
 		}
 	}
 	wanted := map[uint]namedMaterialUnit{}
-	oldBase, newBase := uint(0), uint(0)
-	for _, binding := range existing {
-		if binding.IsBase && binding.Enabled {
-			oldBase = binding.UnitID
-		}
-	}
 	for _, command := range commands {
 		wanted[command.unitID] = command
-		if command.isBase {
-			newBase = command.unitID
-		}
-	}
-	referenced := false
-	for _, binding := range existing {
-		if s.bindingRefs[binding.ID] > 0 {
-			referenced = true
-		}
-	}
-	if referenced && oldBase != newBase {
-		return located(NewDomainError(ReferenceInUse, "被送货明细引用的物料不能更换基本单位"), materialUnitSheetName, commands[0].row, "是否基本单位")
 	}
 	for unitID, binding := range existing {
 		if _, keep := wanted[unitID]; keep {
@@ -412,11 +394,6 @@ func (s *MasterExcelState) replaceMaterialBindings(materialID uint, commands []n
 			return located(NewDomainError(ReferenceInUse, "被送货明细引用的单位绑定不能删除"), materialUnitSheetName, commands[0].row, "单位名称")
 		}
 		delete(s.bindings, binding.ID)
-	}
-	if oldBase != 0 && oldBase != newBase {
-		binding := existing[oldBase]
-		binding.IsBase = false
-		s.bindings[binding.ID] = binding
 	}
 	for _, command := range commands {
 		binding, found := existing[command.unitID]
@@ -642,6 +619,12 @@ func (s *MasterExcelState) load(db *gorm.DB) error {
 	if err := db.Find(&materials).Error; err != nil { return err }
 	if err := db.Find(&bindings).Error; err != nil { return err }
 	if err := db.Find(&images).Error; err != nil { return err }
+	var references []struct {
+		MaterialUnitID uint
+		Count          int
+	}
+	if err := db.Model(&model.DeliveryDetail{}).Select("material_unit_id, COUNT(*) AS count").Group("material_unit_id").Scan(&references).Error; err != nil { return err }
+	for _, reference := range references { s.bindingRefs[reference.MaterialUnitID] = reference.Count }
 	for _, item := range units { s.units[item.ID] = item; s.noteID(item.ID) }
 	for _, item := range brands { s.brands[item.ID] = item; s.noteID(item.ID) }
 	for _, item := range categories { s.categories[item.ID] = item; s.noteID(item.ID) }
@@ -656,6 +639,26 @@ func (s *MasterExcelState) save(db *gorm.DB) error {
 	for _, item := range s.brands { if err := db.Save(&item).Error; err != nil { return err } }
 	for _, item := range s.categories { if err := db.Save(&item).Error; err != nil { return err } }
 	for _, item := range s.materials { if err := db.Save(&item).Error; err != nil { return err } }
+	var existing []model.MaterialUnit
+	if err := db.Find(&existing).Error; err != nil { return err }
+	for _, binding := range existing {
+		wanted, keep := s.bindings[binding.ID]
+		if !keep {
+			var references int64
+			if err := db.Model(&model.DeliveryDetail{}).Where("material_unit_id = ?", binding.ID).Count(&references).Error; err != nil { return err }
+			if references > 0 {
+				return NewDomainError(ReferenceInUse, "被送货明细引用的单位绑定不能删除")
+			}
+			ApplyDeleteAudit(&binding.BusinessModel, s.materials[binding.MaterialID].UpdatedBy)
+			if err := db.Model(&binding).Select("updated_by", "version", "deleted_by", "is_deleted").Updates(&binding).Error; err != nil { return err }
+			if err := db.Delete(&binding).Error; err != nil { return err }
+			continue
+		}
+		if binding.IsBase && !wanted.IsBase {
+			// Release the active base key before saving a replacement, regardless of map order.
+			if err := db.Model(&binding).Update("is_base", false).Error; err != nil { return err }
+		}
+	}
 	for _, item := range s.bindings { if err := db.Save(&item).Error; err != nil { return err } }
 	return nil
 }

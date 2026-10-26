@@ -54,7 +54,7 @@
 | `baseQuantity` | 服务端以数量 × 系数计算 | 固定 10 位 |
 | `amount`、`totalAmount` | 服务端逐行 half-up 到 2 位后汇总 | 固定 2 位 |
 
-拒绝指数表示、NaN、Infinity、超精度、超字段范围及不允许的负数。前端不得用 `Number` 计算账务结果，也不得把缺失单价自动补为 `0`。
+拒绝指数表示、NaN、Infinity、超精度、超字段范围及不允许的负数。前端不得用 `Number` 计算账务结果。送货单录入接受省略整数零或末尾小数点的写法，移焦后规范化为十进制字符串；清空数量、单价或金额时依据其余字段补算或填 `0`，数量、单价和金额均允许为 `0`。
 
 ## 时间、业务日与版本
 
@@ -85,6 +85,7 @@
 | 品牌 | `GET /warehouse/master/brands/list`、`GET /warehouse/master/brands/detail?id=`、`POST /warehouse/master/brands/create`、`PUT /warehouse/master/brands/update`、`DELETE /warehouse/master/brands/delete` | 写入 `{name,mnemonic,code}`；更新、删除接受 `{id,version?}`。 |
 | 类别 | `GET /warehouse/master/categories/list`、`GET /warehouse/master/categories/detail?id=`、`GET /warehouse/master/categories/tree`、`POST /warehouse/master/categories/create`、`PUT /warehouse/master/categories/update`、`DELETE /warehouse/master/categories/delete` | 写入 `{name,mnemonic,code,parentId}`，其中根为 `parentId:0`；更新、删除接受 `{id,version?}`。 |
 | 助记符建议 | `POST /warehouse/master/mnemonic` | `{name}` 返回 `{mnemonic}`；只供相应资料的新建/编辑权限使用。 |
+| 部门 | `GET /warehouse/master/departments/list`、`GET /warehouse/master/departments/detail?id=`、`POST /warehouse/master/departments/create`、`PUT /warehouse/master/departments/update`、`DELETE /warehouse/master/departments/delete` | 写入 `{name,mnemonic}`，名称必填且最多 100 字符，助记符可空且最多 100 字符；更新、删除接受 `{id,version?}`。列表 `keyword` 匹配名称或助记符。 |
 
 ## 资源契约与实现状态
 
@@ -92,7 +93,7 @@
 
 | 资源 | 路径与方法 | 请求/响应要点 |
 | --- | --- | --- |
-| 物料 | `GET /master/materials/list`、`/detail?id=`；`POST /create`、`PUT /update`、`DELETE /delete` | 已落地。创建/更新提交完整单位集合 `{unitId,factor,isBase,enabled}`；更新按 `unitId` 保留绑定 ID。省略被引用绑定或更换被引用物料的基本单位会拒绝，未被引用的绑定随完整集合软删。 |
+| 物料 | `GET /master/materials/list`、`/detail?id=`；`POST /create`、`PUT /update`、`DELETE /delete` | 已落地。创建/更新提交完整单位集合 `{unitId,factor,isBase,enabled}`；更新按 `unitId` 保留绑定 ID。允许重新指定基本单位，始终要求唯一启用基本单位且系数为 `1`；省略被引用绑定仍会拒绝，未被引用的绑定随完整集合软删。变更不改写历史送货明细的基本单位、系数和基本数量快照。 |
 | 资料 Excel | `GET /master/{units,brands,categories,materials}/template`、`POST .../import`、`GET .../export` | 已落地。单位按名称，品牌/类别/物料按编号新增或更新；未知品牌、类别、单位不会自动创建。类别可在同文件前向引用父级，父级为虚拟根时填保留值 `ROOT`。物料必须同时提供 `物料单位` 完整集合，省略绑定表示删除而不是保留。空白可选列清空旧值。任一行失败整文件回滚。 |
 | 物料图片 | `POST /master/materials/uploadImage` | 已落地。multipart `file`，仅 jpg/jpeg/png/bmp，最大 1MiB，不自动压缩；成功返回 `{fileId,url,size,mime}`。物料写请求只接受该入口登记过的 `fileId`。 |
 | 送货单 | `POST /delivery/reserveNumber`；`GET /delivery/list`、`/detail?id=`；`POST /create`、`PUT /update`、`DELETE /delete`；`POST /review`、`/unreview` | 已落地。预占返回正式号和 token，不创建空单；创建消费 token。更新按明细 ID 保留快照，跨品牌或已审核均整单拒绝。 |
@@ -118,6 +119,10 @@
 更新送货单 DTO 额外包含 `id`、可选 `version`，每条明细用可选 `id` 标识已有行。`lineNo` 由后端按数组顺序生成；写请求不接收单号、快照、计算值、状态或审核字段。
 
 创建物料 DTO 为 `{name,mnemonic,code,brandId,categoryId,specification?,alias?,imageFileId?,units:[{unitId,factor,isBase,enabled}]}`；更新再加 `{id,version?}`。详情返回完整单位绑定及只读 `imageUrl`。资料导出携带与列表相同的 `name/keyword/brandId/categoryId/parentId` 筛选，忽略分页。
+
+物料、客户和部门继续使用 `mnemonic` 字符串，允许多个分隔的助记符；名称、编号及任一助记符均可按各资料检索规则命中，不要求迁移旧的单个助记符。
+
+部门资料为独立 `wh_departments` 表；启动迁移将未删除送货单的历史部门名称一次性导入，完成标记保存在 `wh_department_imports`，避免重启后复活已改名或已删除的部门。送货单保存时在同一事务中登记自由输入的新部门。资料改名、删除不改写历史送货单快照；原 `/delivery/departments` 仍返回历史名称字符串数组，保持报表筛选语义。
 
 ### 对账投影
 
