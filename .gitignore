@@ -44,3 +44,4 @@ web/pnpm-lock.yaml
 worktrees/
 
 devDocs/
+output/

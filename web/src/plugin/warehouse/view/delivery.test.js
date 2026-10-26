@@ -482,12 +482,12 @@ it('defaults new material values and calculates editor amount with decimal preci
     bindings: [{ ID: 8, unitId: 9, name: '件', enabled: true, isBase: true }],
     baseBinding: { ID: 8, unitId: 9, name: '件', enabled: true, isBase: true }
   })
-  expect(row).toMatchObject({ quantity: '0', unitPrice: '0', amount: '0.00' })
+  expect(row).toMatchObject({ quantity: '0', unitPrice: '0', amount: '0' })
   expect(state.bindingLabel({ name: '件', isBase: true, enabled: true })).toBe('件')
   row.quantity = '1.25'
   row.unitPrice = '2.4'
   state.clearFieldError(row, 'quantity')
-  expect(row.amount).toBe('3.00')
+  expect(row.amount).toBe('3')
 })
 it('copies reviewed delivery data into a new draft without copying identities', async () => {
   sessionStorage.removeItem('warehouse.delivery.1.draft.new')
@@ -691,19 +691,6 @@ it('batch deletes only drafts with versions and refreshes after partial success'
   expect(mocks.request.mock.calls.at(-1)[0].url).toBe('/warehouse/delivery/list')
 })
 
-it('selects first customer and department on Enter and rejects IME confirmation', async () => {
-  const state = await mountEditableDelivery()
-  const event = { preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() }
-  state.form.brandId = undefined
-  state.selectFirstBrand({ ...event, isComposing: true })
-  expect(state.form.brandId).toBeUndefined()
-  state.selectFirstBrand(event)
-  expect(state.form.brandId).toBe(2)
-  state.form.department = ''
-  state.selectFirstDepartment(event)
-  expect(state.form.department).toBe('采购部')
-  expect(event.preventDefault).toHaveBeenCalledTimes(2)
-})
 
 it('preserves normal rounded prices and rehydrates only unmatched saved amount overrides', async () => {
   const state = await mountEditableDelivery()
@@ -718,6 +705,27 @@ it('preserves normal rounded prices and rehydrates only unmatched saved amount o
   expect(details[0]).toMatchObject({ unitPrice: '0.05' })
   expect(details[0].amount).toBeUndefined()
   expect(details[1].amount).toBe('0.01')
+})
+
+it('displays detail amounts without insignificant fractional zeros', async () => {
+  const state = await mountEditableDelivery()
+  await state.readAggregate({
+    note: { id: 10, status: 'draft', brandId: 2, deliveredAt: '2026-01-01T00:00:00Z' },
+    details: [
+      { id: 1, materialId: 7, materialUnitId: 8, quantity: '4', unitPrice: '11', amount: '44.00' },
+      { id: 2, materialId: 7, materialUnitId: 8, quantity: '4', unitPrice: '11.1', amount: '44.40' },
+      { id: 3, materialId: 7, materialUnitId: 8, quantity: '3', unitPrice: '0.335', amount: '1.01' },
+      { id: 4, materialId: 7, materialUnitId: 8, quantity: '1', unitPrice: '1', amount: '1.50' }
+    ]
+  })
+  const amounts = state.rows.map(row => state.rowAmount(row))
+  expect(amounts).toEqual(['44', '44.4', '1.01', '1.5'])
+  expect(state.rows.map(row => row.amount)).toEqual(['44', '44.4', '1.01', '1.5'])
+  expect(state.rows[3].amountEdited).toBe(true)
+  expect(state.validatedDetails()[3].amount).toBe('1.5')
+  expect(state.calculateAmount('4', '11')).toBe('44.00')
+  expect(state.calculateAmount('4', '11.1')).toBe('44.40')
+  expect(state.tableSummary({ columns: [{}, { property: 'amount' }] })).toEqual(['合计', '90.91'])
 })
 
 it('activates the next row on line completion', async () => {
@@ -767,16 +775,16 @@ it('restores draft rows with unique keys so newly added rows cannot share editin
 it.each(['Enter', 'Tab'])('moves backward on Shift+%s including across rows with open selectors', async key => {
   const state = await mountEditableDelivery()
   const [first, second] = state.rows
-  const previousRemark = { focus: vi.fn() }
+  const previousAmount = { focus: vi.fn() }
   const material = { focus: vi.fn(), blur: vi.fn(), expanded: true }
   const unit = { focus: vi.fn(), blur: vi.fn(), expanded: true }
-  state.setCellRef(first, 'remark', previousRemark)
+  state.setCellRef(first, 'amount', previousAmount)
   state.setCellRef(second, 'material', material)
   state.setCellRef(second, 'unit', unit)
   const event = () => ({ key, shiftKey: true, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() })
   state.cellKeydown(event(), second, 'material')
   await flushPromises()
-  expect(previousRemark.focus).toHaveBeenCalledOnce()
+  expect(previousAmount.focus).toHaveBeenCalledOnce()
   expect(state.activeRowKey).toBe(first.rowKey)
   expect(material.expanded).toBe(false)
   second.unitOpen = true
@@ -1108,7 +1116,7 @@ it('does not discard a remark-only trailing row as an empty row', async () => {
   expect(row.errors.materialId).toBeTruthy()
 })
 
-it.each(['Enter', 'Tab'])('navigates forward and backward through the remark cell on %s', async key => {
+it.each(['Enter', 'Tab'])('skips remark on %s while allowing navigation out of a manually focused remark', async key => {
   const state = await mountEditableDelivery()
   const [first, second] = state.rows
   const remark = { focus: vi.fn() }
@@ -1120,13 +1128,40 @@ it.each(['Enter', 'Tab'])('navigates forward and backward through the remark cel
   const event = shiftKey => ({ key, shiftKey, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() })
   state.cellKeydown(event(false), first, 'amount')
   await flushPromises()
-  expect(remark.focus).toHaveBeenCalledOnce()
+  expect(remark.focus).not.toHaveBeenCalled()
+  expect(material.focus).toHaveBeenCalledOnce()
   state.cellKeydown(event(true), first, 'remark')
   await flushPromises()
   expect(amount.focus).toHaveBeenCalledOnce()
   state.cellKeydown(event(false), first, 'remark')
   await flushPromises()
+  expect(material.focus).toHaveBeenCalledTimes(2)
+})
+
+it.each([
+  ['Enter', 'unitPrice'], ['Tab', 'unitPrice'], ['Enter', 'unit'], ['Tab', 'unit']
+])('skips a reordered remark on %s and crosses rows from the last visible %s field', async (key, lastField) => {
+  const state = await mountEditableDelivery()
+  mocks.userStore.userInfo.originSetting['warehouseDocumentDisplay.delivery'] = {
+    detail: { columns: lastField === 'unit'
+      ? ['remark', 'materialCode', 'materialName', 'quantity', 'unitPrice', 'unitName']
+      : ['remark', 'materialCode', 'materialName', 'unitName', 'quantity', 'unitPrice'] }
+  }
+  const [first, second] = state.rows
+  const remark = { focus: vi.fn() }
+  const material = { focus: vi.fn(), blur: vi.fn() }
+  const last = { focus: vi.fn() }
+  state.setCellRef(second, 'remark', remark)
+  state.setCellRef(second, 'material', material)
+  state.setCellRef(first, lastField, last)
+  const event = shiftKey => ({ key, shiftKey, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() })
+  state.cellKeydown(event(false), first, lastField)
+  await flushPromises()
   expect(material.focus).toHaveBeenCalledOnce()
+  state.cellKeydown(event(true), second, 'material')
+  await flushPromises()
+  expect(last.focus).toHaveBeenCalledOnce()
+  expect(remark.focus).not.toHaveBeenCalled()
 })
 
 it('rehydrates a cached editor on activation without resurrecting an already-saved draft', async () => {

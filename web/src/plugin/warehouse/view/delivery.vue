@@ -79,12 +79,12 @@
         <el-form inline class="editor-header" :disabled="readonly || saving || actionLoading || editorLoading" @keydown.capture="headerKeydown">
           <el-form-item label="正式单号"><strong>{{ note.number || reservation.number || (reserving ? '正在预占正式单号…' : '尚未取得正式单号') }}</strong></el-form-item>
           <el-form-item label="客户" required>
-            <el-select ref="brandSelect" :model-value="form.brandId" filterable default-first-option automatic-dropdown :filter-method="filterBrands" :disabled="rowsLoading" class="brand-select" @focus="openSelect(brandSelect)" @keydown.enter.capture="selectFirstBrand" @change="changeBrand" @visible-change="handleBrandVisibility">
+            <el-select ref="brandSelect" :model-value="form.brandId" filterable default-first-option automatic-dropdown :filter-method="filterBrands" :disabled="rowsLoading" class="brand-select" @focus="openSelect(brandSelect)" @change="changeBrand" @visible-change="handleBrandVisibility">
               <el-option v-if="form.brandId && !brands.some((brand) => idOf(brand) === form.brandId)" :value="form.brandId" :label="note.brandNameSnapshot || `历史客户 #${form.brandId}`" />
               <el-option v-for="brand in filteredBrands" :key="idOf(brand)" :value="idOf(brand)" :label="brand.name"><div class="delivery-option-main"><span>{{ brand.name }}</span><small>{{ brand.code }}</small></div></el-option>
             </el-select>
           </el-form-item>
-          <el-form-item label="部门"><el-autocomplete ref="departmentSelect" v-model="form.department" :fetch-suggestions="suggestDepartments" :trigger-on-focus="true" highlight-first-item maxlength="100" placeholder="请输入部门" @keydown.enter.capture="selectFirstDepartment" /></el-form-item>
+          <el-form-item label="部门"><el-autocomplete v-model="form.department" :fetch-suggestions="suggestDepartments" :trigger-on-focus="true" highlight-first-item maxlength="100" placeholder="请输入部门" /></el-form-item>
           <el-form-item label="送货日期" required><div @keydown.capture="adjustDeliveryDate"><el-date-picker v-model="form.deliveredAt" type="date" value-format="YYYY-MM-DD" placeholder="选择送货日期" /></div></el-form-item>
           <el-form-item v-if="idOf(note)" label="创建人"><el-input :model-value="note.createdByNameSnapshot || '—'" readonly /></el-form-item>
           <el-form-item v-if="idOf(note)" label="创建时间"><el-input :model-value="displayTime(note.createdAt ?? note.CreatedAt)" readonly /></el-form-item>
@@ -133,7 +133,7 @@
               </template>
               <template v-else-if="column.key === 'remark'">
                 <span v-if="readonly || activeRowKey !== row.rowKey" class="editable-cell" data-detail-field="remark" @click.stop="activateCell(row, 'remark')">{{ row.remark }}</span>
-                <el-input v-else :ref="(element) => setCellRef(row, 'remark', element)" v-model="row.remark" data-detail-field="remark" :disabled="!canEdit" @compositionstart="row.composing = true" @compositionend="row.composing = false" @keydown="cellKeydown($event, row, 'remark')" />
+                <el-input v-else :ref="(element) => setCellRef(row, 'remark', element)" v-model="row.remark" data-detail-field="remark" :tabindex="-1" :disabled="!canEdit" @compositionstart="row.composing = true" @compositionend="row.composing = false" @keydown="cellKeydown($event, row, 'remark')" />
                 <div v-if="row.errors.remark" class="cell-error">{{ row.errors.remark }}</div>
               </template>
               <span v-else>{{ row[column.key] }}</span>
@@ -330,7 +330,6 @@ const reservation = reactive({ number: '', token: '' })
 const note = ref({})
 const customerSearch = ref('')
 const brandSelect = ref()
-const departmentSelect = ref()
 const form = reactive({ brandId: undefined, department: '', deliveredAt: '' })
 const departments = ref([])
 const quickMaterialSearch = ref('')
@@ -795,7 +794,7 @@ async function readAggregate(data) {
     specification: detail.specificationSnapshot || '', unitName: detail.unitNameSnapshot,
     quantity: trimDecimal(detail.quantity), unitPrice: trimDecimal(detail.unitPrice),
     remark: detail.remark || '',
-    amount: detail.amount == null ? calculateAmount(detail.quantity, detail.unitPrice) : trimDecimal(detail.amount),
+    amount: compactAmount(detail.amount == null ? calculateAmount(detail.quantity, detail.unitPrice) : detail.amount),
     amountEdited: detail.amount != null && parseScaled(detail.amount, 2) !== parseScaled(calculateAmount(detail.quantity, detail.unitPrice), 2),
     units: [{ ID: detail.materialUnitId, unitId: detail.unitId, factor: detail.factor, name: detail.unitNameSnapshot, enabled: false, isBase: detail.unitId === detail.baseUnitId }]
   }))
@@ -897,26 +896,6 @@ function handleBrandVisibility(visible) {
 }
 function openSelect(select) {
   nextTick(() => { if (select) select.expanded = true })
-}
-function consumeEnter(event) {
-  if (event.isComposing || event.keyCode === 229 || event.repeat) return false
-  event.preventDefault()
-  event.stopImmediatePropagation?.()
-  return true
-}
-function selectFirstBrand(event) {
-  if (!canEdit.value || !filteredBrands.value.length || !consumeEnter(event)) return
-  changeBrand(idOf(filteredBrands.value[0]))
-  if (brandSelect.value) brandSelect.value.expanded = false
-  customerSearch.value = ''
-}
-function selectFirstDepartment(event) {
-  if (!canEdit.value) return
-  const keyword = form.department.trim().toLocaleLowerCase()
-  const first = departments.value.find((value) => !keyword || value.toLocaleLowerCase().includes(keyword))
-  if (!first || !consumeEnter(event)) return
-  form.department = first
-  departmentSelect.value?.close?.()
 }
 function openMaterialSelect(row) {
   row.materialOpen = true
@@ -1061,7 +1040,7 @@ async function currentMaterial(id) {
   return { material, bindings, baseBinding }
 }
 function applyMaterial(row, { material, bindings, baseBinding }) {
-  Object.assign(row, { materialId: idOf(material), materialUnitId: idOf(baseBinding), materialCode: material.code, materialName: material.name, specification: material.specification || '', unitName: baseBinding.name || unitNames.value.get(baseBinding.unitId) || '', units: bindings, unitsLoaded: true, quantity: '0', unitPrice: '0', keyword: '', errors: {}, amount: '0.00', amountEdited: false })
+  Object.assign(row, { materialId: idOf(material), materialUnitId: idOf(baseBinding), materialCode: material.code, materialName: material.name, specification: material.specification || '', unitName: baseBinding.name || unitNames.value.get(baseBinding.unitId) || '', units: bindings, unitsLoaded: true, quantity: '0', unitPrice: '0', keyword: '', errors: {}, amount: '0', amountEdited: false })
 }
 async function selectMaterial(row, materialId) {
   if (!canEdit.value || row.loading) return
@@ -1110,7 +1089,10 @@ function calculateAmount(quantityValue, priceValue) {
   return formatScaled((quantity * price + BigInt(500000)) / BigInt(1000000), 2)
 }
 function rowAmount(row) {
-  return row.amountEdited ? row.amount : calculateAmount(row.quantity, row.unitPrice)
+  return compactAmount(row.amountEdited ? row.amount : calculateAmount(row.quantity, row.unitPrice))
+}
+function compactAmount(value) {
+  return value == null ? value : trimDecimal(value)
 }
 function clearFieldError(row, field) {
   delete row.errors[field]
@@ -1122,7 +1104,7 @@ function clearFieldError(row, field) {
     delete row.errors.unitPrice
   } else {
     row.amountEdited = false
-    row.amount = calculateAmount(row.quantity, row.unitPrice)
+    row.amount = compactAmount(calculateAmount(row.quantity, row.unitPrice))
     delete row.errors.amount
   }
 }
@@ -1143,10 +1125,12 @@ function cellKeydown(event, row, field) {
   if (!['Enter', 'Tab'].includes(event.key)) return
   const fields = editingFields.value
   const index = fields.indexOf(field)
+  const previousField = fields.slice(0, index).reverse().find((key) => key !== 'remark')
+  const nextField = fields.slice(index + 1).find((key) => key !== 'remark')
   const orderedRows = displayRows.value
   const rowIndex = orderedRows.findIndex((item) => item.rowKey === row.rowKey)
   if (event.shiftKey) {
-    const target = index > 0 ? row : orderedRows[rowIndex - 1]
+    const target = previousField ? row : orderedRows[rowIndex - 1]
     if (!target) return
     event.preventDefault()
     event.stopImmediatePropagation?.()
@@ -1155,7 +1139,7 @@ function cellKeydown(event, row, field) {
       if (select) select.expanded = false
       select?.blur?.()
     }
-    focusCell(target, fields[index > 0 ? index - 1 : fields.length - 1])
+    focusCell(target, previousField || fields.filter((key) => key !== 'remark').at(-1))
     return
   }
   // Let ElSelect confirm its highlighted option and close its own popper.
@@ -1167,20 +1151,15 @@ function cellKeydown(event, row, field) {
     return
   }
   if (field === 'unit' && row.unitOpen) return
-  if (field === 'unit' && event.key === 'Enter') {
-    event.preventDefault()
-    if (index < fields.length - 1) focusCell(row, fields[index + 1])
-    return
-  }
   if (field === 'material' && !row.materialId) return
   if (field === 'unit' && !row.materialUnitId) return
   if (['quantity', 'unitPrice', 'amount'].includes(field) && !validateDecimal(row, field)) { event.preventDefault(); focusCell(row, field); return }
   event.preventDefault()
-  if (index < fields.length - 1) focusCell(row, fields[index + 1])
+  if (nextField) focusCell(row, nextField)
   else {
     let target = orderedRows[rowIndex + 1]
     if (!target) { target = emptyRow(); rows.value.push(target) }
-    focusCell(target, fields[0])
+    focusCell(target, fields.find((key) => key !== 'remark'))
   }
 }
 function trimDecimal(value) { return String(value).replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1') }

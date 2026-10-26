@@ -37,6 +37,11 @@ build-image-web:
 build-image-server:
 	@cd server/ && docker build -t ${REPOSITORY}/server:${TAGS_OPT} .
 
+#构建server镜像并导出为output/server.tar
+build-image-server-tar: build-image-server
+	mkdir -p output
+	docker save -o output/server.tar ${REPOSITORY}/server:${TAGS_OPT}
+
 #本地环境打包前后端
 build-local:
 	if [ -d "build" ];then rm -rf build; else echo "OK!"; fi \
@@ -46,7 +51,8 @@ build-local:
 #本地环境打包前端
 build-web-local:
 	@cd web/ && if [ -d "dist" ];then rm -rf dist; else echo "OK!"; fi \
-	&& yarn config set registry http://mirrors.cloud.tencent.com/npm/ && yarn install && yarn build
+	&& yarn config set registry http://mirrors.cloud.tencent.com/npm/ && yarn install && yarn build \
+	&& mkdir -p ../output && (cd dist && tar -zc ./* -f dist.tar.gz && mv dist.tar.gz ../../output/)
 
 #本地环境打包后端
 build-server-local:
