@@ -672,6 +672,27 @@ it('batch deletes only drafts with versions and refreshes after partial success'
   expect(mocks.request.mock.calls.at(-1)[0].url).toBe('/warehouse/delivery/list')
 })
 
+it('submits fuzzy audit-name filters and inclusive audit-time date ranges', async () => {
+  const state = await mountEditableDelivery()
+  Object.assign(state.filters, {
+    createdBy: '创建人', updatedBy: '修改人', reviewedBy: '审核人',
+    createdAt: ['2026-10-01', '2026-10-02'],
+    updatedAt: ['2026-10-03', '2026-10-04'],
+    reviewedAt: ['2026-10-05', '2026-10-06']
+  })
+  await state.loadList()
+  const { params } = mocks.request.mock.calls.map(([request]) => request).filter(request => request.url.endsWith('/list')).at(-1)
+  expect(params).toMatchObject({
+    createdBy: '创建人', updatedBy: '修改人', reviewedBy: '审核人',
+    createdFrom: '2026-10-01T00:00:00+08:00',
+    createdTo: '2026-10-02T16:00:00.000Z',
+    updatedFrom: '2026-10-03T00:00:00+08:00',
+    updatedTo: '2026-10-04T16:00:00.000Z',
+    reviewedFrom: '2026-10-05T00:00:00+08:00',
+    reviewedTo: '2026-10-06T16:00:00.000Z'
+  })
+})
+
 
 it('preserves normal rounded prices and rehydrates only unmatched saved amount overrides', async () => {
   const state = await mountEditableDelivery()

@@ -297,6 +297,33 @@ func (s *DeliveryService) List(ctx context.Context, query req.DeliveryListQuery)
 	if query.DeliveredTo != nil {
 		db = db.Where("delivered_at < ?", *query.DeliveredTo)
 	}
+	if query.CreatedFrom != nil {
+		db = db.Where("created_at >= ?", *query.CreatedFrom)
+	}
+	if query.CreatedTo != nil {
+		db = db.Where("created_at < ?", *query.CreatedTo)
+	}
+	if query.UpdatedFrom != nil {
+		db = db.Where("updated_at >= ?", *query.UpdatedFrom)
+	}
+	if query.UpdatedTo != nil {
+		db = db.Where("updated_at < ?", *query.UpdatedTo)
+	}
+	if query.ReviewedFrom != nil {
+		db = db.Where("reviewed_at >= ?", *query.ReviewedFrom)
+	}
+	if query.ReviewedTo != nil {
+		db = db.Where("reviewed_at < ?", *query.ReviewedTo)
+	}
+	if keyword := strings.TrimSpace(query.CreatedBy); keyword != "" {
+		db = db.Where("COALESCE((SELECT nick_name FROM sys_users WHERE sys_users.id = wh_delivery_notes.created_by), created_by_name_snapshot) LIKE ?", "%"+keyword+"%")
+	}
+	if keyword := strings.TrimSpace(query.UpdatedBy); keyword != "" {
+		db = db.Where("COALESCE((SELECT nick_name FROM sys_users WHERE sys_users.id = wh_delivery_notes.updated_by), '') LIKE ?", "%"+keyword+"%")
+	}
+	if keyword := strings.TrimSpace(query.ReviewedBy); keyword != "" {
+		db = db.Where("COALESCE((SELECT nick_name FROM sys_users WHERE sys_users.id = wh_delivery_notes.reviewed_by), reviewed_by_name_snapshot, '') LIKE ?", "%"+keyword+"%")
+	}
 	if err := db.Count(&result.Total).Error; err != nil {
 		return result, err
 	}

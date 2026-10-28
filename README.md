@@ -138,6 +138,12 @@ npm install
 npm run serve
 ```
 
+本地构建前端并生成压缩包：
+```bash
+make build-web-local
+```
+生成文件：`output/dist.tar.gz`。
+
 ### 2.3 swagger自动化API文档
 
 #### 2.3.1 安装 swagger

@@ -120,6 +120,8 @@
 
 `GET /delivery/list` 的 `number` 为去除首尾空白后的包含匹配；只读字段 `brandName` 按 `brandId` 查询当前未删除客户名称（缺失时回退 `brandNameSnapshot`），客户排序使用 `sortBy=brandName`。名称投影不迁移或重写单据快照；对账查询、候选、导出、打印使用相同的当前客户名称规则。
 
+送货单列表可按 `createdBy`、`updatedBy`、`reviewedBy` 对创建人、修改人、审核人做名称关键字包含匹配；查询优先使用用户当前昵称，创建人和审核人缺少当前昵称时回退单据名称快照。`createdFrom/createdTo`、`updatedFrom/updatedTo`、`reviewedFrom/reviewedTo` 分别筛选创建、修改、审核时间，时间范围下界包含、上界不包含（前端结束日期换算为次日零点）。以上字段可在单据展示设置的送货单筛选字段中调整显隐和分组。
+
 单据展示设置继续使用当前账号的 `originSetting["warehouseDocumentDisplay.delivery"]`，新增 `reconciliation.filters:{basic:string[],more:string[]}`，支持 `schemeId`、`deliveredRange`、`reviewedRange`、`brandId`、`categoryId`、`department`、`number`、`materialKeyword`、`statuses`。不在两组中的条件隐藏并从新查询排除；隐藏状态条件时使用默认已审核、已复审。旧账号未配置该结构时保留全部对账查询字段；旧客户展示键 `brandNameSnapshot` 及其列宽在读取配置时迁移为 `brandName`。
 
 创建物料 DTO 为 `{name,mnemonic,code,brandId,categoryId,specification?,alias?,imageFileId?,units:[{unitId,factor,isBase,enabled}]}`；更新再加 `{id,version?}`。详情返回完整单位绑定及只读 `imageUrl`。资料导出携带与列表相同的 `name/keyword/brandId/categoryId/parentId` 筛选，忽略分页。

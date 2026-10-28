@@ -148,13 +148,13 @@ type UpdateMaterialInput struct {
 // DeliveryDetailInput is one writable delivery line. A nil ID creates a line;
 // non-nil IDs must be verified as belonging to the delivery note.
 type DeliveryDetailInput struct {
-	ID             *uint  `json:"id,omitempty"`
-	MaterialID     uint   `json:"materialId" binding:"required,gt=0"`
-	MaterialUnitID uint   `json:"materialUnitId" binding:"required,gt=0"`
-	Quantity       string `json:"quantity" binding:"required"`
-	UnitPrice      string `json:"unitPrice"`
+	ID             *uint   `json:"id,omitempty"`
+	MaterialID     uint    `json:"materialId" binding:"required,gt=0"`
+	MaterialUnitID uint    `json:"materialUnitId" binding:"required,gt=0"`
+	Quantity       string  `json:"quantity" binding:"required"`
+	UnitPrice      string  `json:"unitPrice"`
 	Amount         *string `json:"amount,omitempty"`
-	Remark         string `json:"remark"`
+	Remark         string  `json:"remark"`
 }
 
 type CreateDeliveryInput struct {
@@ -249,12 +249,21 @@ type DeliveryListQuery struct {
 	SortQuery
 	DeliveredFrom *time.Time `json:"deliveredFrom,omitempty" form:"deliveredFrom"`
 	DeliveredTo   *time.Time `json:"deliveredTo,omitempty" form:"deliveredTo"`
+	CreatedFrom   *time.Time `json:"createdFrom,omitempty" form:"createdFrom"`
+	CreatedTo     *time.Time `json:"createdTo,omitempty" form:"createdTo"`
+	UpdatedFrom   *time.Time `json:"updatedFrom,omitempty" form:"updatedFrom"`
+	UpdatedTo     *time.Time `json:"updatedTo,omitempty" form:"updatedTo"`
+	ReviewedFrom  *time.Time `json:"reviewedFrom,omitempty" form:"reviewedFrom"`
+	ReviewedTo    *time.Time `json:"reviewedTo,omitempty" form:"reviewedTo"`
 	BrandID       *uint      `json:"brandId,omitempty" form:"brandId"`
 	Status        string     `json:"status,omitempty" form:"status"`
 	Number        string     `json:"number,omitempty" form:"number"`
 	Department    string     `json:"department,omitempty" form:"department"`
 	MaterialIDs   string     `json:"materialIds,omitempty" form:"materialIds"`
 	DetailRemark  string     `json:"detailRemark,omitempty" form:"detailRemark"`
+	CreatedBy     string     `json:"createdBy,omitempty" form:"createdBy"`
+	UpdatedBy     string     `json:"updatedBy,omitempty" form:"updatedBy"`
+	ReviewedBy    string     `json:"reviewedBy,omitempty" form:"reviewedBy"`
 }
 
 // ReportSchemeListQuery filters paginated report schemes.

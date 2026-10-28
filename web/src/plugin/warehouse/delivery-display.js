@@ -3,7 +3,9 @@ export const DISPLAY_SETTING_KEY = 'warehouseDocumentDisplay.delivery'
 export const FILTER_FIELDS = [
   { key: 'number', label: '单号' }, { key: 'dates', label: '送货日期' },
   { key: 'brandId', label: '客户' }, { key: 'materialIds', label: '物料' }, { key: 'department', label: '部门' }, { key: 'status', label: '状态' },
-  { key: 'detailRemark', label: '明细备注' }
+  { key: 'detailRemark', label: '明细备注' },
+  { key: 'createdBy', label: '创建人' }, { key: 'updatedBy', label: '修改人' }, { key: 'reviewedBy', label: '审核人' },
+  { key: 'createdAt', label: '创建时间' }, { key: 'updatedAt', label: '修改时间' }, { key: 'reviewedAt', label: '审核时间' }
 ]
 export const RECONCILIATION_FILTER_FIELDS = [
   { key: 'schemeId', label: '选择方案' }, { key: 'deliveredRange', label: '送货日期' },
@@ -46,7 +48,7 @@ function cleanWidths(value, fields) {
 export function normalizeDisplaySettings(raw) {
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
   const basic = cleanKeys(source.filters?.basic, FILTER_FIELDS, ['number', 'dates', 'brandId', 'materialIds'])
-  const more = cleanKeys(source.filters?.more, FILTER_FIELDS, ['department', 'status', 'detailRemark']).filter((key) => !basic.includes(key))
+  const more = cleanKeys(source.filters?.more, FILTER_FIELDS, ['department', 'status', 'detailRemark', 'createdBy', 'updatedBy', 'reviewedBy', 'createdAt', 'updatedAt', 'reviewedAt']).filter((key) => !basic.includes(key))
   if (!basic.includes('dates') && !more.includes('dates')) basic.push('dates')
   const detailColumns = cleanKeys(source.detail?.columns, DETAIL_FIELDS, keys(DETAIL_FIELDS))
   for (const field of DETAIL_FIELDS) if (field.required && !detailColumns.includes(field.key)) detailColumns.push(field.key)

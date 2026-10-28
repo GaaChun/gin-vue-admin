@@ -11,8 +11,8 @@
                 <el-option v-for="brand in filteredListBrands" :key="idOf(brand)" :value="idOf(brand)" :label="brand.name"><div class="delivery-option-main"><span>{{ brand.name }}</span><small>{{ brand.code }}</small></div></el-option>
               </el-select>
               <MaterialFilter v-else-if="field.key === 'materialIds'" v-model="filters.materialIds" :materials="materials" />
-              <el-input v-else-if="field.key === 'department'" v-model="filters.department" clearable placeholder="输入部门" @keyup.enter="search" />
-              <el-input v-else-if="field.key === 'detailRemark'" v-model="filters.detailRemark" clearable placeholder="输入明细备注关键词" @keyup.enter="search" />
+              <el-input v-else-if="['department', 'detailRemark', 'createdBy', 'updatedBy', 'reviewedBy'].includes(field.key)" v-model="filters[field.key]" clearable :placeholder="`输入${field.label}关键字`" @keyup.enter="search" />
+              <el-date-picker v-else-if="['createdAt', 'updatedAt', 'reviewedAt'].includes(field.key)" v-model="filters[field.key]" type="daterange" value-format="YYYY-MM-DD" :start-placeholder="`开始${field.label}`" :end-placeholder="`结束${field.label}`" />
               <el-select v-else-if="field.key === 'status'" v-model="filters.status" clearable class="status-select"><el-option label="未审核" value="draft" /><el-option label="已审核" value="reviewed" /><el-option label="已复审" value="reReviewed" /></el-select>
             </el-form-item>
           </div>
@@ -232,7 +232,7 @@ const listError = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
-const filters = reactive({ number: '', dates: [], brandId: undefined, materialIds: [], status: '', department: '', detailRemark: '' })
+const filters = reactive({ number: '', dates: [], brandId: undefined, materialIds: [], status: '', department: '', detailRemark: '', createdBy: '', updatedBy: '', reviewedBy: '', createdAt: [], updatedAt: [], reviewedAt: [] })
 const tableWidthKey = 'warehouse.delivery.list'
 const { widths: columnWidths, load: loadColumnWidths, headerDragEnd } = useTableWidths()
 const userStore = useUserStore()
@@ -650,10 +650,12 @@ async function loadList() {
   const sequence = ++listSequence
   listLoading.value = true
   listError.value = ''
-  const params = { page: page.value, pageSize: pageSize.value, number: filters.number.trim() || undefined, brandId: filters.brandId || undefined, materialIds: filters.materialIds.length ? filters.materialIds.join(',') : undefined, status: filters.status || undefined, department: filters.department.trim() || undefined, detailRemark: filters.detailRemark.trim() || undefined, ...(sortBy.value ? { sortBy: sortBy.value, sortOrder: sortOrder.value } : {}) }
-  if (filters.dates?.length === 2) {
-    params.deliveredFrom = `${filters.dates[0]}T00:00:00+08:00`
-    params.deliveredTo = new Date(new Date(`${filters.dates[1]}T00:00:00+08:00`).getTime() + 86400000).toISOString()
+  const params = { page: page.value, pageSize: pageSize.value, number: filters.number.trim() || undefined, brandId: filters.brandId || undefined, materialIds: filters.materialIds.length ? filters.materialIds.join(',') : undefined, status: filters.status || undefined, department: filters.department.trim() || undefined, detailRemark: filters.detailRemark.trim() || undefined, createdBy: filters.createdBy.trim() || undefined, updatedBy: filters.updatedBy.trim() || undefined, reviewedBy: filters.reviewedBy.trim() || undefined, ...(sortBy.value ? { sortBy: sortBy.value, sortOrder: sortOrder.value } : {}) }
+  for (const [field, from, to] of [['createdAt', 'createdFrom', 'createdTo'], ['updatedAt', 'updatedFrom', 'updatedTo'], ['reviewedAt', 'reviewedFrom', 'reviewedTo']]) {
+    if (filters[field]?.length === 2) {
+      params[from] = `${filters[field][0]}T00:00:00+08:00`
+      params[to] = new Date(new Date(`${filters[field][1]}T00:00:00+08:00`).getTime() + 86400000).toISOString()
+    }
   }
   try {
     const data = await request({ url: `${base}/list`, method: 'get', params })
@@ -667,7 +669,7 @@ async function loadList() {
 }
 function search() { page.value = 1; loadList() }
 function resetSearch() {
-  Object.assign(filters, { number: '', dates: getDefaultDateRange(displaySettings.value.dateDefault), brandId: undefined, materialIds: [], status: '', department: '', detailRemark: '' })
+  Object.assign(filters, { number: '', dates: getDefaultDateRange(displaySettings.value.dateDefault), brandId: undefined, materialIds: [], status: '', department: '', detailRemark: '', createdBy: '', updatedBy: '', reviewedBy: '', createdAt: [], updatedAt: [], reviewedAt: [] })
   search()
 }
 function resetEditor() {
@@ -763,7 +765,7 @@ function persistListState() {
 }
 function restoreListState() {
   const state = readDeliveryListState(stateAccount, route)
-  Object.assign(filters, { number: '', dates: getDefaultDateRange(displaySettings.value.dateDefault), brandId: undefined, materialIds: [], status: '', department: '', detailRemark: '' }, state?.filters)
+  Object.assign(filters, { number: '', dates: getDefaultDateRange(displaySettings.value.dateDefault), brandId: undefined, materialIds: [], status: '', department: '', detailRemark: '', createdBy: '', updatedBy: '', reviewedBy: '', createdAt: [], updatedAt: [], reviewedAt: [] }, state?.filters)
   clearHiddenFilters()
   page.value = state?.page || 1
   pageSize.value = state?.pageSize || 20
@@ -775,7 +777,7 @@ function clearHiddenFilters() {
   const visible = new Set([...displaySettings.value.filters.basic, ...displaySettings.value.filters.more])
   for (const { key } of FILTER_FIELDS) {
     if (visible.has(key)) continue
-    filters[key] = key === 'materialIds' || key === 'dates' ? [] : key === 'brandId' ? undefined : ''
+    filters[key] = ['materialIds', 'dates', 'createdAt', 'updatedAt', 'reviewedAt'].includes(key) ? [] : key === 'brandId' ? undefined : ''
   }
 }
 async function reserveNumber() {

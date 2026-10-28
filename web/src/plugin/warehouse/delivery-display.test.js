@@ -71,3 +71,10 @@ it('backfills detail remarks into saved legacy columns and defaults their filter
   expect(custom.filters.basic).toContain('detailRemark')
   expect(custom.filters.more).not.toContain('detailRemark')
 })
+
+it('defaults audit person and time filters into configurable more conditions', () => {
+  const settings = normalizeDisplaySettings()
+  expect(settings.filters.more).toEqual(expect.arrayContaining(['createdBy', 'updatedBy', 'reviewedBy', 'createdAt', 'updatedAt', 'reviewedAt']))
+  const custom = normalizeDisplaySettings({ filters: { basic: ['number'], more: [] } })
+  expect(custom.filters.more).toEqual([])
+})
