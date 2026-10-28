@@ -43,7 +43,7 @@ func deliverySortColumns() map[string]string {
 	return map[string]string{
 		"number":                 "number",
 		"deliveredAt":            "delivered_at",
-		"brandNameSnapshot":      "brand_name_snapshot",
+		"brandName":              "brand_name",
 		"department":             "department",
 		"status":                 "status",
 		"totalAmount":            "total_amount",

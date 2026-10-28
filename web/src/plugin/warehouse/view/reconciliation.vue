@@ -39,7 +39,7 @@
             <el-button v-if="collapsed" text circle aria-label="展开报表方案操作面板" title="展开报表方案操作面板" :icon="Expand" @click="collapsed = false" />
             <div>
               <h2>对账表</h2>
-              <p>按所选单据状态统计未删除的送货单历史快照</p>
+              <p>按所选单据状态统计送货单，客户名称显示当前资料名称</p>
             </div>
           </div>
           <div class="heading-actions">
@@ -48,53 +48,35 @@
         </div>
         <el-form label-position="top" @submit.prevent="search">
           <div class="report-filters">
-            <el-form-item label="选择方案">
-              <el-select :model-value="selectedScheme ? idOf(selectedScheme) : ''" clearable filterable :loading="schemesLoading" placeholder="默认列（未命名方案）" @change="selectScheme">
-                <el-option v-for="scheme in schemeOptions" :key="idOf(scheme)" :label="scheme.name" :value="idOf(scheme)">
-                  <span>{{ scheme.name }}</span><small class="scheme-scope">{{ scheme.scope === 'shared' ? '共享' : '个人' }}</small>
-                </el-option>
-                <template #footer>
-                  <el-pagination v-if="schemeTotal > 20" small layout="prev, pager, next" :total="schemeTotal" :page-size="20" :current-page="schemePage" @current-change="changeSchemePage" />
-                  <span v-else class="report-hint">方案只应用列设置</span>
-                </template>
-              </el-select>
-            </el-form-item>
-            <el-form-item label="送货日期">
-              <el-date-picker v-model="filters.deliveredRange" type="daterange" :shortcuts="dateShortcuts" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期（含）" />
-            </el-form-item>
-            <el-form-item label="审核日期">
-              <el-date-picker v-model="filters.reviewedRange" type="daterange" :shortcuts="dateShortcuts" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期（含）" />
-            </el-form-item>
-            <el-form-item label="客户快照">
-              <el-select v-model="filters.brandId" clearable filterable placeholder="全部历史客户">
-                <el-option v-for="(item, index) in options.brands" :key="index" :value="item.id" :label="`${item.code} · ${item.name}`" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="类别快照">
-              <el-select v-model="filters.categoryId" clearable filterable placeholder="全部历史类别（精确匹配）">
-                <el-option v-for="(item, index) in options.categories" :key="index" :value="item.id" :label="`${item.code} · ${item.name}`" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="部门">
-              <el-select v-model="filters.department" clearable filterable placeholder="全部历史部门">
-                <el-option v-for="department in options.departments" :key="department" :value="department" :label="department" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="送货单号">
-              <el-input v-model="filters.number" clearable placeholder="输入单号关键字" @keyup.enter="search" />
-            </el-form-item>
-            <el-form-item label="物料关键字">
-              <el-input v-model="filters.materialKeyword" clearable placeholder="快照编号或名称" @keyup.enter="search" />
-            </el-form-item>
-            <el-form-item label="单据状态">
-              <el-select v-model="filters.statuses" multiple collapse-tags collapse-tags-tooltip placeholder="已审核、已复审">
-                <el-option v-for="status in statusOptions" :key="status.value" :value="status.value" :label="status.label" />
-              </el-select>
-            </el-form-item>
+            <template v-for="group in reportFilterGroups" :key="group.key">
+              <el-form-item v-for="field in group.fields" v-show="group.key === 'basic' || moreReportFiltersOpen" :key="field.key" :label="field.label">
+                <el-select v-if="field.key === 'schemeId'" :model-value="selectedScheme ? idOf(selectedScheme) : ''" clearable filterable :loading="schemesLoading" placeholder="默认列（未命名方案）" @change="selectScheme">
+                  <el-option v-for="scheme in schemeOptions" :key="idOf(scheme)" :label="scheme.name" :value="idOf(scheme)"><span>{{ scheme.name }}</span><small class="scheme-scope">{{ scheme.scope === 'shared' ? '共享' : '个人' }}</small></el-option>
+                  <template #footer><el-pagination v-if="schemeTotal > 20" small layout="prev, pager, next" :total="schemeTotal" :page-size="20" :current-page="schemePage" @current-change="changeSchemePage" /><span v-else class="report-hint">方案只应用列设置</span></template>
+                </el-select>
+                <el-date-picker v-else-if="['deliveredRange', 'reviewedRange'].includes(field.key)" v-model="filters[field.key]" type="daterange" :shortcuts="dateShortcuts" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期（含）" />
+                <el-select v-else-if="field.key === 'brandId'" v-model="filters.brandId" clearable filterable placeholder="全部客户">
+                  <el-option v-for="item in options.brands" :key="item.id" :value="item.id" :label="item.name" />
+                </el-select>
+                <el-select v-else-if="field.key === 'categoryId'" v-model="filters.categoryId" clearable filterable placeholder="全部历史类别（精确匹配）">
+                  <el-option v-for="(item, index) in options.categories" :key="index" :value="item.id" :label="`${item.code} · ${item.name}`" />
+                </el-select>
+                <el-select v-else-if="field.key === 'department'" v-model="filters.department" clearable filterable placeholder="全部历史部门">
+                  <el-option v-for="department in options.departments" :key="department" :value="department" :label="department" />
+                </el-select>
+                <el-input v-else-if="field.key === 'number'" v-model="filters.number" clearable placeholder="输入单号关键字" @keyup.enter="search" />
+                <el-input v-else-if="field.key === 'materialKeyword'" v-model="filters.materialKeyword" clearable placeholder="快照编号或名称" @keyup.enter="search" />
+                <el-select v-else-if="field.key === 'statuses'" v-model="filters.statuses" multiple collapse-tags collapse-tags-tooltip placeholder="已审核、已复审">
+                  <el-option v-for="status in statusOptions" :key="status.value" :value="status.value" :label="status.label" />
+                </el-select>
+              </el-form-item>
+            </template>
           </div>
           <div class="filter-actions">
             <span class="filter-note">日期范围按北京时间；结束日期包含当天。</span>
             <div>
+              <el-button v-if="displaySettings.reconciliation.filters.more.length" link @click="moreReportFiltersOpen = !moreReportFiltersOpen">{{ moreReportFiltersOpen ? '收起更多条件' : '更多条件' }}</el-button>
+              <el-button link @click="router.push({ name: 'warehouseDeliveryDisplaySettings' })">查询条件设置</el-button>
               <el-button @click="reset">重置</el-button>
               <el-button type="primary" :loading="loading" :disabled="!available.length || !columns.length" @click="search">查询</el-button>
             </div>
@@ -183,7 +165,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onDeactivated, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Expand, Fold, FullScreen } from '@element-plus/icons-vue'
@@ -193,10 +175,16 @@ import { loadReportColumns, loadReportOptions, queryReport, exportReport, printR
 
 import ReportPrintView from '../components/report-print-view.vue'
 import { useTableWidths } from '../use-table-widths'
+import { DISPLAY_SETTING_KEY, RECONCILIATION_FILTER_FIELDS, normalizeDisplaySettings } from '../delivery-display'
 
 defineOptions({ name: 'WarehouseReconciliation' })
 const defaults = ['deliveryDay', 'noteNumber', 'brand', 'department', 'materialCode', 'materialName', 'specification', 'unit', 'quantity', 'unitPrice', 'amount']
 const user = useUserStore()
+const displaySettings = computed(() => normalizeDisplaySettings(user.userInfo.originSetting?.[DISPLAY_SETTING_KEY]))
+const moreReportFiltersOpen = ref(false)
+const reportFieldMap = new Map(RECONCILIATION_FILTER_FIELDS.map(field => [field.key, field]))
+const reportFilterGroups = computed(() => ['basic', 'more'].map(key => ({ key, fields: displaySettings.value.reconciliation.filters[key].map(id => reportFieldMap.get(id)).filter(Boolean) })))
+const visibleReportFilters = computed(() => new Set([...displaySettings.value.reconciliation.filters.basic, ...displaySettings.value.reconciliation.filters.more]))
 const router = useRouter()
 function openDelivery(id) {
   router.push({ name: 'warehouseDelivery', query: { whDelivery: '1', whId: String(id) } })
@@ -256,6 +244,10 @@ const statusOptions = [{ value: 'draft', label: '草稿' }, { value: 'reviewed',
 const defaultStatuses = ['reviewed', 'reReviewed']
 const blankFilters = () => ({ deliveredRange: null, reviewedRange: null, brandId: undefined, categoryId: undefined, department: '', number: '', materialKeyword: '', statuses: [...defaultStatuses] })
 const filters = reactive(blankFilters())
+watch(visibleReportFilters, visible => {
+  const defaults = blankFilters()
+  for (const key of Object.keys(defaults)) if (!visible.has(key)) filters[key] = defaults[key]
+}, { immediate: true })
 const page = ref(1)
 const pageSize = ref(20)
 const sortBy = ref('')
@@ -332,9 +324,17 @@ function dateRange(range) {
   return [`${range[0]}T00:00:00+08:00`, `${nextDay}T00:00:00+08:00`]
 }
 function currentFilters() {
-  const [deliveredFrom, deliveredTo] = dateRange(filters.deliveredRange)
-  const [reviewedFrom, reviewedTo] = dateRange(filters.reviewedRange)
-  return Object.fromEntries(Object.entries({ deliveredFrom, deliveredTo, reviewedFrom, reviewedTo, brandId: filters.brandId || undefined, categoryId: filters.categoryId || undefined, department: filters.department.trim() || undefined, number: filters.number.trim() || undefined, materialKeyword: filters.materialKeyword.trim() || undefined, statuses: [...(filters.statuses.length ? filters.statuses : defaultStatuses)] }).filter(([, value]) => value !== undefined))
+  const visible = visibleReportFilters.value
+  const [deliveredFrom, deliveredTo] = dateRange(visible.has('deliveredRange') ? filters.deliveredRange : null)
+  const [reviewedFrom, reviewedTo] = dateRange(visible.has('reviewedRange') ? filters.reviewedRange : null)
+  return Object.fromEntries(Object.entries({ deliveredFrom, deliveredTo, reviewedFrom, reviewedTo,
+    brandId: visible.has('brandId') ? filters.brandId || undefined : undefined,
+    categoryId: visible.has('categoryId') ? filters.categoryId || undefined : undefined,
+    department: visible.has('department') ? filters.department.trim() || undefined : undefined,
+    number: visible.has('number') ? filters.number.trim() || undefined : undefined,
+    materialKeyword: visible.has('materialKeyword') ? filters.materialKeyword.trim() || undefined : undefined,
+    statuses: [...(visible.has('statuses') && filters.statuses.length ? filters.statuses : defaultStatuses)]
+  }).filter(([, value]) => value !== undefined))
 }
 const pendingChanges = computed(() => lastQuery.value && (JSON.stringify(columns.value) !== JSON.stringify(lastQuery.value.columns) || JSON.stringify(currentFilters()) !== JSON.stringify(lastQuery.value.filters) || sortBy.value !== lastQuery.value.sortBy || sortOrder.value !== lastQuery.value.sortOrder))
 const resultFilterDescription = computed(() => {
@@ -688,6 +688,11 @@ onMounted(async () => {
     loadColumnWidths(tableWidthKey)
   ])
   if (available.value.length) await search()
+})
+let activatedOnce = false
+onActivated(() => {
+  if (activatedOnce) loadReportOptions().then(data => { options.value = data }).catch(showError)
+  activatedOnce = true
 })
 onDeactivated(() => {
   cancelHeaderPointer()

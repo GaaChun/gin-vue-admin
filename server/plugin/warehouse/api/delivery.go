@@ -218,7 +218,7 @@ func (a DeliveryAPI) Detail(c *gin.Context) {
 }
 
 // ListDeliveries 查询送货单列表
-// @Summary 查询送货单列表
+// @Summary 查询送货单列表，单号按关键字模糊匹配，客户显示当前名称
 // @Tags warehouse-delivery
 // @Produce json
 // @Param query query request.DeliveryListQuery false "筛选"

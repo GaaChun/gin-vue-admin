@@ -5,7 +5,7 @@
         <template v-for="group in filterGroups" :key="group.key">
           <div v-show="group.key === 'basic' || moreFiltersOpen" :data-filter-group="group.key">
             <el-form-item v-for="field in group.fields" :key="field.key" :label="field.label" :data-filter-key="field.key">
-              <el-input v-if="field.key === 'number'" v-model="filters.number" clearable placeholder="完整送货单号" @keyup.enter="search" />
+              <el-input v-if="field.key === 'number'" v-model="filters.number" clearable placeholder="输入送货单号关键字" @keyup.enter="search" />
               <el-date-picker v-else-if="field.key === 'dates'" v-model="filters.dates" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" />
               <el-select v-else-if="field.key === 'brandId'" v-model="filters.brandId" clearable filterable default-first-option automatic-dropdown :filter-method="(value) => listCustomerSearch = value" class="brand-select" @visible-change="listCustomerSearch = ''">
                 <el-option v-for="brand in filteredListBrands" :key="idOf(brand)" :value="idOf(brand)" :label="brand.name"><div class="delivery-option-main"><span>{{ brand.name }}</span><small>{{ brand.code }}</small></div></el-option>
@@ -187,6 +187,15 @@
         <el-button type="primary" :loading="quickMaterialSaving" @click="createQuickMaterial">创建并添加</el-button>
       </template>
     </el-dialog>
+    <el-dialog v-model="closePromptOpen" title="当前送货单尚未保存" width="460px" append-to-body :close-on-click-modal="false" :close-on-press-escape="!closePromptSaving" :show-close="!closePromptSaving" :before-close="() => finishClosePrompt(false)">
+      <p>送货单{{ note.number || reservation.number ? `“${note.number || reservation.number}”` : '' }}的修改尚未保存，是否确认关闭标签页？</p>
+      <p class="editor-hint">“保存”将保存单据后关闭；“取消”保留标签页；“确定”不保存并关闭。</p>
+      <template #footer>
+        <el-button type="primary" :loading="closePromptSaving" @click="saveBeforeTabClose">保存</el-button>
+        <el-button :disabled="closePromptSaving" @click="finishClosePrompt(false)">取消</el-button>
+        <el-button type="danger" :disabled="closePromptSaving" @click="finishClosePrompt(true)">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -204,6 +213,8 @@ import { useTableWidths } from '../use-table-widths'
 import { DISPLAY_SETTING_KEY, FILTER_FIELDS, LIST_FIELDS, DETAIL_FIELDS, normalizeDisplaySettings, getDefaultDateRange } from '../delivery-display'
 import { calculateAmount, decimalError, deliveryCellTarget, deliveryForwardTarget, formatScaled, parseScaled, settleDeliveryNumber, trimDecimal, updateDeliveryNumber } from '../delivery-input'
 import { matchesMasterKeyword } from '../master-search'
+import { registerTabClose } from '@/utils/tab-close'
+import { readDeliveryListState, writeDeliveryListState, clearDeliveryListState } from '../delivery-list-state'
 
 defineOptions({ name: 'WarehouseDelivery' })
 const base = '/warehouse/delivery'
@@ -231,6 +242,10 @@ let viewActive = true
 let editorDocument = ''
 let editorReady = false
 let editorSequence = 0
+let closedByTab = false
+const closePromptOpen = ref(false)
+const closePromptSaving = ref(false)
+let resolveClosePrompt
 function accountKey() { return String(idOf(userStore.userInfo) || '') }
 function currentView() { return viewActive && route.fullPath === viewRouteKey }
 function sessionKey(kind, account = stateAccount) { return `warehouse.delivery.${account}.${kind}` }
@@ -685,10 +700,10 @@ async function copyDocument() {
     materialName: row.materialName,
     specification: row.specification,
     unitName: row.unitName,
-    quantity: String(row.quantity),
+    quantity: '0',
     unitPrice: String(row.unitPrice),
-    amount: rowAmount(row),
-    amountEdited: !!row.amountEdited,
+    amount: '0',
+    amountEdited: false,
     remark: row.remark,
     units: row.units.map((unit) => ({ ...unit })),
     unitsLoaded: false
@@ -729,7 +744,7 @@ function restoreEditorDraft(draft, isNew = false) {
   lineCategoryId.value = draft.lineCategoryId
 }
 function persistEditorDraft() {
-  if (!viewActive || !editorReady || !editorOpen.value || editorLoading.value || saving.value || !stateAccount) return
+  if (closedByTab || !viewActive || !editorReady || !editorOpen.value || editorLoading.value || saving.value || !stateAccount) return
   if (editorDocument !== 'new' && !dirty.value) { clearEditorDraft(); return }
   if (editorDocument === 'new' && idOf(note.value)) return
   writeSession(`draft.${editorDocument}`, {
@@ -743,16 +758,16 @@ function clearEditorDraft(document = editorDocument, account = stateAccount) {
   if (account && document) sessionStorage.removeItem(sessionKey(`draft.${document}`, account))
 }
 function persistListState() {
-  if (!viewActive) return
-  writeSession('listState', { filters: { ...filters }, page: page.value, pageSize: pageSize.value, sortBy: sortBy.value, sortOrder: sortOrder.value, moreFiltersOpen: moreFiltersOpen.value })
+  if (closedByTab || !viewActive || detailRoute.value || !stateAccount) return
+  writeDeliveryListState(stateAccount, route, { filters: { ...filters }, page: page.value, pageSize: pageSize.value, sortBy: sortBy.value, sortOrder: sortOrder.value, moreFiltersOpen: moreFiltersOpen.value })
 }
 function restoreListState() {
-  const state = readSession('listState')
+  const state = readDeliveryListState(stateAccount, route)
   Object.assign(filters, { number: '', dates: getDefaultDateRange(displaySettings.value.dateDefault), brandId: undefined, materialIds: [], status: '', department: '', detailRemark: '' }, state?.filters)
   clearHiddenFilters()
   page.value = state?.page || 1
   pageSize.value = state?.pageSize || 20
-  sortBy.value = state?.sortBy || ''
+  sortBy.value = state?.sortBy === 'brandNameSnapshot' ? 'brandName' : state?.sortBy || ''
   sortOrder.value = state?.sortOrder || ''
   moreFiltersOpen.value = !!state?.moreFiltersOpen
 }
@@ -1172,11 +1187,11 @@ function reportEditorError(error) {
   }
   showError(error)
 }
-async function save(continueNew = false, review = false) {
-  if (!canEdit.value || (!idOf(note.value) && !reservation.token)) return
-  if (!form.brandId || !form.deliveredAt) { ElMessage.error('请选择客户和送货日期'); return }
+async function save(continueNew = false, review = false, forClose = false) {
+  if (!canEdit.value || (!idOf(note.value) && !reservation.token)) return false
+  if (!form.brandId || !form.deliveredAt) { ElMessage.error('请选择客户和送货日期'); return false }
   const details = validatedDetails()
-  if (!details) return
+  if (!details) return false
   const id = idOf(note.value)
   const actor = stateAccount
   const data = { ...(id ? { id, version: note.value.version } : { reservationToken: reservation.token }), brandId: form.brandId, department: form.department.trim(), deliveredAt: `${form.deliveredAt}T00:00:00+08:00`, details }
@@ -1185,7 +1200,7 @@ async function save(continueNew = false, review = false) {
   try {
     const saved = await request({ url: `${base}/${id ? 'update' : 'create'}`, method: id ? 'put' : 'post', data })
     clearEditorDraft(id ? String(id) : 'new', actor)
-    if (actor !== accountKey()) return
+    if (actor !== accountKey()) return false
     if (continueNew) {
       clearEditorDraft('new')
       editorReady = false
@@ -1202,15 +1217,16 @@ async function save(continueNew = false, review = false) {
       const savedId = id || idOf(savedNote)
       editorDocument = String(savedId)
       await readAggregate(saved)
-      if (!id) {
+      if (!id && !forClose) {
         const query = { ...route.query, whDelivery: '1', whId: String(savedId) }
         delete query.whNew
         await router.push({ name: route.name, query })
       }
     }
     ElMessage.success(review ? '送货单保存并审核成功' : continueNew ? '保存成功，可继续新增送货单' : '送货单保存成功')
-    await loadList()
-  } catch (error) { if (actor === accountKey()) reportEditorError(error) } finally { if (actor === accountKey()) saving.value = false }
+    if (!forClose) await loadList()
+    return true
+  } catch (error) { if (actor === accountKey()) reportEditorError(error); return false } finally { if (actor === accountKey()) saving.value = false }
 }
 async function transition(row, action, opinion) {
   if (actionLoading.value || batchLoading.value) return
@@ -1251,6 +1267,39 @@ async function transition(row, action, opinion) {
     if (actor === accountKey()) { if (active) reportEditorError(error); else showError(error); await loadList() }
   } finally { if (actor === accountKey()) actionLoading.value = false }
 }
+function finishClosePrompt(allowed) {
+  closePromptOpen.value = false
+  const resolve = resolveClosePrompt
+  resolveClosePrompt = undefined
+  resolve?.(allowed)
+}
+async function saveBeforeTabClose() {
+  if (closePromptSaving.value) return
+  closePromptSaving.value = true
+  try { if (await save(false, false, true)) finishClosePrompt(true) }
+  finally { closePromptSaving.value = false }
+}
+const unregisterTabClose = registerTabClose(route, {
+  beforeClose() {
+    if (!detailRoute.value) return true
+    if (saving.value || actionLoading.value || rowsLoading.value || editorLoading.value) {
+      ElMessage.warning('送货单正在处理中，请稍后关闭')
+      return false
+    }
+    if (!dirty.value) return true
+    closePromptOpen.value = true
+    return new Promise(resolve => { resolveClosePrompt = resolve })
+  },
+  closed() {
+    closedByTab = true
+    if (detailRoute.value) {
+      clearEditorDraft()
+      if (route.query.whNew === '1') clearEditorDraft('new')
+    } else clearDeliveryListState(stateAccount, route)
+  }
+})
+// Discard the old persistent filter cache; only open tabs retain list state now.
+sessionStorage.removeItem(sessionKey('listState'))
 restoreListState()
 watch(() => displaySettings.value.filters, clearHiddenFilters, { deep: true })
 watch([form, rows, reservation, detailSortBy, detailSortOrder, lineCategoryId], persistEditorDraft, { deep: true })
@@ -1258,8 +1307,10 @@ watch([filters, page, pageSize, sortBy, sortOrder, moreFiltersOpen], () => {
   if (currentView() && stateAccount === accountKey()) persistListState()
 }, { deep: true })
 onBeforeUnmount(() => {
+  unregisterTabClose()
+  finishClosePrompt(false)
   persistEditorDraft()
-  persistListState()
+  if (!detailRoute.value) clearDeliveryListState(stateAccount, route)
   endRowDrag()
   ++editorSequence
   document.removeEventListener('pointerdown', handleEditorPointerDown, true)
@@ -1282,6 +1333,13 @@ async function restoreRouteEditor() {
 let activatedOnce = false
 onActivated(() => {
   viewActive = true
+  if (route.query.whNew === '1' && idOf(note.value)) {
+    const query = { ...route.query, whId: String(idOf(note.value)) }
+    delete query.whNew
+    router.replace({ name: route.name, query })
+    activatedOnce = true
+    return
+  }
   if (activatedOnce) {
     restoreListState()
     restoreRouteEditor()
@@ -1297,7 +1355,7 @@ onDeactivated(() => {
   ++editorSequence
 })
 watch(() => idOf(userStore.userInfo), () => {
-  persistListState()
+  if (!detailRoute.value) clearDeliveryListState(stateAccount, route)
   persistEditorDraft()
   editorReady = false
   ++editorSequence

@@ -138,7 +138,7 @@ func BuildProjection(lines []ReconciliationLine, query req.ReconciliationQuery, 
 		return ReportProjection{}, sortErr
 	}
 	page := query.PageQuery.WithDefaults()
-	result := ReportProjection{List: rows, Page: page.Page, PageSize: page.PageSize, Total: int64(len(rows)), Columns: columnIDs(columns), Summary: summary(matched, columns), Warnings: []string{"按所选单据状态统计未删除送货单的历史快照，默认已审核、已复审", "导出、打印按执行时数据重新生成完整结果"}}
+	result := ReportProjection{List: rows, Page: page.Page, PageSize: page.PageSize, Total: int64(len(rows)), Columns: columnIDs(columns), Summary: summary(matched, columns), Warnings: []string{"按所选单据状态统计未删除送货单，客户名称采用当前资料，其余业务数据沿用单据快照", "导出、打印按执行时数据重新生成完整结果"}}
 	if paginate {
 		result.List = pageRows(rows, page.Page, page.PageSize)
 	}
@@ -341,6 +341,8 @@ func dimensionKey(line ReconciliationLine, id string) []string {
 	// Display labels are deliberately readable, but each identity and snapshot
 	// component remains separate in the key (spaces and '#' are valid data).
 	switch id {
+	case "brand":
+		return []string{id, line.BrandName, decimalID(line.BrandID)}
 	case "department":
 		return []string{id, line.Department}
 	case "materialCode":

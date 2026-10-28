@@ -288,8 +288,8 @@ func (s *DeliveryService) List(ctx context.Context, query req.DeliveryListQuery)
 	if query.DetailRemark != "" {
 		db = db.Where("id IN (SELECT note_id FROM wh_delivery_details WHERE deleted_at IS NULL AND remark LIKE ?)", "%"+query.DetailRemark+"%")
 	}
-	if query.Number != "" {
-		db = db.Where("number = ?", query.Number)
+	if number := strings.TrimSpace(query.Number); number != "" {
+		db = db.Where("number LIKE ?", "%"+number+"%")
 	}
 	if query.DeliveredFrom != nil {
 		db = db.Where("delivered_at >= ?", *query.DeliveredFrom)
@@ -311,7 +311,7 @@ func (s *DeliveryService) List(ctx context.Context, query req.DeliveryListQuery)
 			return result, err
 		}
 	}
-	err := db.Select("wh_delivery_notes.*, COALESCE((SELECT nick_name FROM sys_users WHERE sys_users.id = wh_delivery_notes.updated_by), '') AS updated_by_name").Order(order).Offset((query.Page - 1) * query.PageSize).Limit(query.PageSize).Find(&result.List).Error
+	err := db.Select("wh_delivery_notes.*, COALESCE((SELECT name FROM wh_brands WHERE wh_brands.id = wh_delivery_notes.brand_id AND wh_brands.deleted_at IS NULL), wh_delivery_notes.brand_name_snapshot) AS brand_name, COALESCE((SELECT nick_name FROM sys_users WHERE sys_users.id = wh_delivery_notes.updated_by), '') AS updated_by_name").Order(order).Offset((query.Page - 1) * query.PageSize).Limit(query.PageSize).Find(&result.List).Error
 	return result, err
 }
 

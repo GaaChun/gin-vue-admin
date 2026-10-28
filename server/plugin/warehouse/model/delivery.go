@@ -20,6 +20,7 @@ type DeliveryNote struct {
 	ReviewedByNameSnapshot *string         `json:"reviewedByNameSnapshot,omitempty" gorm:"column:reviewed_by_name_snapshot;type:varchar(100);comment:审核人名称快照"`
 	ReReviewOpinion        *string         `json:"reReviewOpinion" gorm:"column:re_review_opinion;type:text;comment:可空复审意见"`
 	UpdatedByName          string          `json:"updatedByName" gorm:"->;-:migration"`
+	BrandName              string          `json:"brandName" gorm:"->;-:migration"`
 }
 func (DeliveryNote) TableName() string { return "wh_delivery_notes" }
 

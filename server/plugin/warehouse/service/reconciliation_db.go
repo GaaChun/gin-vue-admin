@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ReconciliationService reads only persisted delivery snapshots, never current masters.
+// ReconciliationService reads delivery snapshots and resolves current customer names by ID.
 type ReconciliationService struct{ db *gorm.DB }
 
 func NewReconciliationService(db *gorm.DB) *ReconciliationService {
@@ -57,9 +57,10 @@ func (s *ReconciliationService) readSnapshot(ctx context.Context, statuses []str
 		// keep rows, grouping and summary on one audited-state snapshot.
 		err := tx.Table("wh_delivery_details AS d").
 			Joins("JOIN wh_delivery_notes AS n ON n.id = d.note_id").
+			Joins("LEFT JOIN wh_brands AS b ON b.id = n.brand_id AND b.deleted_at IS NULL").
 			Where("n.deleted_at IS NULL AND d.deleted_at IS NULL AND n.status IN ?", statuses).
 			Select(`n.id AS note_id, n.delivered_at, n.created_at, n.reviewed_at, n.status,
-			 n.number AS note_number, n.department, n.brand_id, n.brand_code_snapshot AS brand_code, n.brand_name_snapshot AS brand_name,
+			 n.number AS note_number, n.department, n.brand_id, n.brand_code_snapshot AS brand_code, COALESCE(b.name, n.brand_name_snapshot) AS brand_name,
 			 d.material_id, d.material_code_snapshot AS material_code, d.material_name_snapshot AS material_name,
 			 d.specification_snapshot AS specification, d.category_id, d.category_code_snapshot AS category_code, d.category_name_snapshot AS category_name,
 			 d.unit_id, d.base_unit_id, d.unit_name_snapshot AS unit_name, d.base_unit_name_snapshot AS base_unit_name,
@@ -86,16 +87,17 @@ type ReportOptions struct {
 func (s *ReconciliationService) Options(ctx context.Context) (ReportOptions, error) {
 	result := ReportOptions{Brands: []ReportOption{}, Categories: []ReportOption{}, Departments: []string{}}
 	err := s.readSnapshot(ctx, []string{string(DeliveryDraft), string(DeliveryReviewed), string(DeliveryReReviewed)}, func(lines []ReconciliationLine) error {
-		brands, categories := map[ReportOption]bool{}, map[ReportOption]bool{}
+		brands := map[uint]ReportOption{}
+		categories := map[ReportOption]bool{}
 		departments := map[string]bool{}
 		for _, line := range lines {
-			brands[ReportOption{line.BrandID, line.BrandCode, line.BrandName}] = true
+			brands[line.BrandID] = ReportOption{line.BrandID, line.BrandCode, line.BrandName}
 			categories[ReportOption{line.CategoryID, line.CategoryCode, line.CategoryName}] = true
 			if strings.TrimSpace(line.Department) != "" {
 				departments[line.Department] = true
 			}
 		}
-		for item := range brands {
+		for _, item := range brands {
 			result.Brands = append(result.Brands, item)
 		}
 		for item := range categories {

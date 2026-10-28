@@ -126,8 +126,11 @@
     }
   })
   watch(cacheOwner, () => pages.clear(), { flush: 'sync' })
+  const evictClosedTabs = keys => { for (const key of keys) pages.delete(key) }
+  emitter.on('tabsClosed', evictClosedTabs)
   onUnmounted(() => {
     emitter.off('reload', reload)
+    emitter.off('tabsClosed', evictClosedTabs)
     if (reloadTimer) window.clearTimeout(reloadTimer)
   })
 

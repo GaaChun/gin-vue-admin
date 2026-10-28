@@ -118,6 +118,10 @@
 
 更新送货单 DTO 额外包含 `id`、可选 `version`，每条明细用可选 `id` 标识已有行。`lineNo` 由后端按数组顺序生成；写请求不接收单号、快照、计算值、状态或审核字段。
 
+`GET /delivery/list` 的 `number` 为去除首尾空白后的包含匹配；只读字段 `brandName` 按 `brandId` 查询当前未删除客户名称（缺失时回退 `brandNameSnapshot`），客户排序使用 `sortBy=brandName`。名称投影不迁移或重写单据快照；对账查询、候选、导出、打印使用相同的当前客户名称规则。
+
+单据展示设置继续使用当前账号的 `originSetting["warehouseDocumentDisplay.delivery"]`，新增 `reconciliation.filters:{basic:string[],more:string[]}`，支持 `schemeId`、`deliveredRange`、`reviewedRange`、`brandId`、`categoryId`、`department`、`number`、`materialKeyword`、`statuses`。不在两组中的条件隐藏并从新查询排除；隐藏状态条件时使用默认已审核、已复审。旧账号未配置该结构时保留全部对账查询字段；旧客户展示键 `brandNameSnapshot` 及其列宽在读取配置时迁移为 `brandName`。
+
 创建物料 DTO 为 `{name,mnemonic,code,brandId,categoryId,specification?,alias?,imageFileId?,units:[{unitId,factor,isBase,enabled}]}`；更新再加 `{id,version?}`。详情返回完整单位绑定及只读 `imageUrl`。资料导出携带与列表相同的 `name/keyword/brandId/categoryId/parentId` 筛选，忽略分页。
 
 物料、客户和部门继续使用 `mnemonic` 字符串，允许多个分隔的助记符；名称、编号及任一助记符均可按各资料检索规则命中，不要求迁移旧的单个助记符。

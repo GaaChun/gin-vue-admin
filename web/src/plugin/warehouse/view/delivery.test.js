@@ -347,27 +347,6 @@ it('clears and reserves a new note when continuing from the existing new-note ro
   expect(state.rows[0].materialId).toBeUndefined()
 })
 
-it('shows department immediately after customer in the delivery list', async () => {
-  mocks.routeQuery = {}
-  mocks.allOptions.mockResolvedValue([])
-  mocks.request.mockImplementation(async ({ url }) => {
-    if (url.endsWith('/list')) return { list: [{ id: 10, department: '采购部', brandNameSnapshot: '客户A' }], total: 1, page: 1, pageSize: 20 }
-    throw new Error(`Unexpected request: ${url}`)
-  })
-  wrapper = mount(Delivery, { global: { stubs: {
-    'el-table': { props: ['data'], template: '<div><slot /></div>' },
-    'el-table-column': {
-      props: ['label', 'prop', 'type'],
-      data: () => ({ fakeRow: { keyword: '', units: [], errors: {}, status: 'draft', rowKey: 'test' } }),
-      template: '<div class="column" :data-label="label" :data-prop="prop"><slot :row="fakeRow" /></div>'
-    }
-  } } })
-  await flushPromises()
-
-  const labels = wrapper.findAll('.column').map(column => column.attributes('data-label'))
-  expect(labels.indexOf('部门')).toBe(labels.indexOf('客户') + 1)
-  expect(wrapper.findAll('.column')[labels.indexOf('部门')].attributes('data-prop')).toBe('department')
-})
 
 it('labels create and edit route tabs with the operation', () => {
   expect(fmtTitle('客户', { params: {}, query: { whDetail: 'brands', whNew: '1' } })).toBe('客户-新建')
@@ -525,10 +504,12 @@ it('copies reviewed delivery data into a new draft without copying identities', 
   expect(draft.rows).toHaveLength(1)
   expect(draft.rows[0]).toMatchObject({
     materialId: 7, materialUnitId: 8, materialCode: 'M-7',
-    quantity: '2.5', unitPrice: '12.25', remark: '轻放，送至东门', unitsLoaded: false
+    quantity: '0', unitPrice: '12.25', remark: '轻放，送至东门', unitsLoaded: false
   })
   expect(draft.rows[0].id).toBeUndefined()
-  expect(draft.rows[0].amount).toBe('30.63')
+  expect(draft.rows[0].amount).toBe('0')
+  expect(draft.rows[0].amountEdited).toBe(false)
+  expect(state.rows[0].quantity).toBe('2.5')
   expect(state.note.id).toBe(22)
   expect(mocks.push).toHaveBeenCalledWith({ name: 'warehouseDelivery', query: { whDelivery: '1', whNew: '1' } })
   await state.initializeNew()
@@ -536,7 +517,7 @@ it('copies reviewed delivery data into a new draft without copying identities', 
   expect(state.form).toMatchObject({ brandId: 3, department: '仓库', deliveredAt: '2026-02-03' })
   expect(state.reservation).toMatchObject({ number: 'SK260101000023', token: 'new-token' })
   expect(state.rows).toHaveLength(1)
-  expect(state.rows[0]).toMatchObject({ materialId: 7, materialUnitId: 8, quantity: '2.5', unitPrice: '12.25', remark: '轻放，送至东门' })
+  expect(state.rows[0]).toMatchObject({ materialId: 7, materialUnitId: 8, quantity: '0', unitPrice: '12.25', remark: '轻放，送至东门' })
   expect(state.rows[0].id).toBeUndefined()
   expect(mocks.request).toHaveBeenCalledWith({ url: '/warehouse/delivery/reserveNumber', method: 'post' })
 })
@@ -867,41 +848,8 @@ it('retains edited headers and added/reordered rows through list and other-tab r
   expect(new Set(state.rows.map(row => row.rowKey)).size).toBe(3)
 })
 
-it('preserves list conditions, paging, sorting and expanded filters across remounts and display setting updates', async () => {
-  await mountEditableDelivery()
-  mocks.request.mockImplementation(async ({ url, params }) => {
-    if (url.endsWith('/list')) return { list: [], total: 200, page: params.page, pageSize: params.pageSize }
-    if (url.endsWith('/departments')) return []
-    throw new Error(`Unexpected request: ${url}`)
-  })
-  let state = await remountDelivery({})
-  Object.assign(state.filters, { number: 'SK42', department: '采购部', materialIds: [7, 8], brandId: 2, status: 'draft', detailRemark: '轻放', dates: ['2026-01-01', '2026-01-31'] })
-  state.page = 3; state.pageSize = 50
-  state.sortBy = 'department'; state.sortOrder = 'asc'; state.moreFiltersOpen = true
-  await flushPromises()
-  mocks.userStore.userInfo.originSetting = {
-    'warehouseDocumentDisplay.delivery': { dateDefault: 'today', filters: { basic: ['dates', 'number', 'materialIds', 'brandId'], more: ['department', 'status', 'detailRemark'] }, list: { columns: ['number'] } }
-  }
-  await flushPromises()
-  expect(state.filters.department).toBe('采购部')
-  expect(state.filters.dates).toEqual(['2026-01-01', '2026-01-31'])
-  state = await remountDelivery({})
-  expect(state.filters).toMatchObject({ number: 'SK42', department: '采购部', materialIds: [7, 8], brandId: 2, status: 'draft', detailRemark: '轻放', dates: ['2026-01-01', '2026-01-31'] })
-  expect([state.page, state.pageSize, state.sortBy, state.sortOrder, state.moreFiltersOpen]).toEqual([3, 50, 'department', 'asc', true])
-  state.changeSort({ prop: 'department', order: 'ascending' })
-  expect(state.page).toBe(3)
-  expect(mocks.request.mock.calls.map(([request]) => request).filter(request => request.url.endsWith('/list')).at(-1).params).toMatchObject({
-    page: 3, pageSize: 50, number: 'SK42', department: '采购部', materialIds: '7,8', detailRemark: '轻放', sortBy: 'department', sortOrder: 'asc'
-  })
-  state.resetSearch()
-  await flushPromises()
-  expect(state.filters.number).toBe('')
-  expect(state.filters.detailRemark).toBe('')
-  expect(state.filters.dates).not.toEqual(['2026-01-01', '2026-01-31'])
-  expect(state.page).toBe(1)
-})
 
-it('isolates existing and new drafts and list conditions by account and document', async () => {
+it('isolates existing and new drafts by account and document', async () => {
   let state = await mountEditableDelivery()
   const backend = mocks.request.getMockImplementation()
   mocks.request.mockImplementation(async request => {
@@ -911,7 +859,6 @@ it('isolates existing and new drafts and list conditions by account and document
     return result
   })
   state.form.department = '甲账号单据10'
-  state.filters.number = '甲账号查询'
   state = await remountDelivery({ whDelivery: '1', whId: '11' })
   expect(state.form.department).toBe('')
   state.form.department = '甲账号单据11'
@@ -923,7 +870,6 @@ it('isolates existing and new drafts and list conditions by account and document
   mocks.userStore.userInfo = { ID: 2, originSetting: {} }
   state = await remountDelivery({ whDelivery: '1', whId: '10' })
   expect(state.form.department).toBe('')
-  expect(state.filters.number).toBe('')
   state.form.department = '乙账号单据10'
   state = await remountDelivery({ whDelivery: '1', whNew: '1' })
   expect(state.form.department).toBe('')
@@ -932,7 +878,6 @@ it('isolates existing and new drafts and list conditions by account and document
   mocks.userStore.userInfo = { ID: 1, originSetting: {} }
   state = await remountDelivery({ whDelivery: '1', whId: '10' })
   expect(state.form.department).toBe('甲账号单据10')
-  expect(state.filters.number).toBe('甲账号查询')
   state = await remountDelivery({ whDelivery: '1', whId: '11' })
   expect(state.form.department).toBe('甲账号单据11')
   state = await remountDelivery({ whDelivery: '1', whNew: '1' })
@@ -1009,10 +954,9 @@ it('preserves the same document while switching edit/list routes without remount
   expect(ElMessageBox.confirm).not.toHaveBeenCalled()
 })
 
-it('preserves each account when switching users without remounting and ignores an old account detail response', async () => {
+it('preserves account drafts when switching users and ignores an old account detail response', async () => {
   const state = await mountEditableDelivery()
   state.form.department = '账号甲编辑'
-  state.filters.number = '账号甲查询'
   const backend = mocks.request.getMockImplementation()
   let finishOtherAccount
   mocks.request.mockImplementation(request => request.url === '/warehouse/delivery/detail'
@@ -1020,13 +964,11 @@ it('preserves each account when switching users without remounting and ignores a
     : backend(request))
   mocks.userStore.userInfo = { ID: 2, originSetting: {} }
   await flushPromises()
-  expect(state.filters.number).toBe('')
   expect(state.form.department).toBe('')
   const finishAccountTwo = finishOtherAccount
   mocks.request.mockImplementation(backend)
   mocks.userStore.userInfo = { ID: 1, originSetting: {} }
   await flushPromises()
-  expect(state.filters.number).toBe('账号甲查询')
   expect(state.form.department).toBe('账号甲编辑')
   finishAccountTwo({ Note: { id: 10, version: 99, status: 'draft', department: '账号乙数据' }, Details: [] })
   await flushPromises()

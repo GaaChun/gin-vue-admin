@@ -56,10 +56,12 @@
 <script setup>
   import { emitter } from '@/utils/bus.js'
   import { computed, onUnmounted, ref, watch, nextTick } from 'vue'
-  import { useRoute, useRouter } from 'vue-router'
+  import { isNavigationFailure, useRoute, useRouter } from 'vue-router'
   import { useUserStore } from '@/pinia/modules/user'
   import { fmtTitle } from '@/utils/fmtRouterTitle'
   import { accountIdentity, isCreatedEditorRoute, routeTabKey, snapshotRoute } from '@/utils/route-state'
+  import { completeTabClose, prepareTabClose } from '@/utils/tab-close'
+  import { ElMessage } from 'element-plus'
 
   defineOptions({
     name: 'HistoryComponent'
@@ -108,65 +110,47 @@
       rightActive.value = id.substring(4)
     }
   }
-  const closeAll = () => {
-    historys.value = [
-      {
-        name: defaultRouter.value,
-        meta: {
-          title: '首页'
-        },
-        query: {},
-        params: {}
+  let closingTabs = false
+  const homeTab = () => ({ name: defaultRouter.value, meta: { title: '首页' }, query: {}, params: {} })
+  const closeTabs = async (targets, fallback) => {
+    if (closingTabs || !targets.length) return
+    closingTabs = true
+    const owner = accountIdentity(userStore.userInfo)
+    try {
+      if (!(await prepareTabClose(targets)) || owner !== accountIdentity(userStore.userInfo)) return
+      const keys = new Set(targets.map(getFmtString))
+      const remaining = historys.value.filter(item => !keys.has(getFmtString(item)))
+      if (keys.has(getFmtString(route))) {
+        const next = fallback || remaining.at(-1) || homeTab()
+        if (getFmtString(router.resolve(next)) !== getFmtString(route)) {
+          const failure = await router.push(next)
+          if (isNavigationFailure(failure)) return
+        }
       }
-    ]
-    router.push({ name: defaultRouter.value })
-    contextMenuVisible.value = false
-    sessionStorage.setItem('historys', JSON.stringify(historys.value))
+      if (owner !== accountIdentity(userStore.userInfo)) return
+      completeTabClose(targets)
+      emitter.emit('tabsClosed', [...keys])
+      historys.value = historys.value.filter(item => !keys.has(getFmtString(item)))
+      if (!historys.value.length) historys.value = [homeTab()]
+      setTab(route)
+      sessionStorage.setItem('historys', JSON.stringify(historys.value))
+      contextMenuVisible.value = false
+    } catch (error) {
+      ElMessage.error(error.message || '关闭标签失败，内容已保留')
+    } finally { closingTabs = false }
   }
+  const closeAll = () => closeTabs([...historys.value], homeTab())
   const closeLeft = () => {
-    let right
-    const rightIndex = historys.value.findIndex((item) => {
-      if (getFmtString(item) === rightActive.value) {
-        right = item
-      }
-      return getFmtString(item) === rightActive.value
-    })
-    const activeIndex = historys.value.findIndex(
-      (item) => getFmtString(item) === activeValue.value
-    )
-    historys.value.splice(0, rightIndex)
-    if (rightIndex > activeIndex) {
-      router.push(right)
-    }
-    sessionStorage.setItem('historys', JSON.stringify(historys.value))
+    const index = historys.value.findIndex(item => getFmtString(item) === rightActive.value)
+    if (index >= 0) return closeTabs(historys.value.slice(0, index), historys.value[index])
   }
   const closeRight = () => {
-    let right
-    const leftIndex = historys.value.findIndex((item) => {
-      if (getFmtString(item) === rightActive.value) {
-        right = item
-      }
-      return getFmtString(item) === rightActive.value
-    })
-    const activeIndex = historys.value.findIndex(
-      (item) => getFmtString(item) === activeValue.value
-    )
-    historys.value.splice(leftIndex + 1, historys.value.length)
-    if (leftIndex < activeIndex) {
-      router.push(right)
-    }
-    sessionStorage.setItem('historys', JSON.stringify(historys.value))
+    const index = historys.value.findIndex(item => getFmtString(item) === rightActive.value)
+    if (index >= 0) return closeTabs(historys.value.slice(index + 1), historys.value[index])
   }
   const closeOther = () => {
-    let right
-    historys.value = historys.value.filter((item) => {
-      if (getFmtString(item) === rightActive.value) {
-        right = item
-      }
-      return getFmtString(item) === rightActive.value
-    })
-    router.push(right)
-    sessionStorage.setItem('historys', JSON.stringify(historys.value))
+    const selected = historys.value.find(item => getFmtString(item) === rightActive.value)
+    if (selected) return closeTabs(historys.value.filter(item => item !== selected), selected)
   }
   const isSame = (first, second) => routeTabKey(first) === routeTabKey(second)
   const setTab = (route) => {
@@ -197,29 +181,9 @@
     })
   }
   const removeTab = (tab) => {
-    const index = historys.value.findIndex((item) => getFmtString(item) === tab)
-    if (getFmtString(route) === tab) {
-      if (historys.value.length === 1) {
-        router.push({ name: defaultRouter.value })
-      } else {
-        if (index < historys.value.length - 1) {
-          router.push({
-            name: historys.value[index + 1].name,
-            query: historys.value[index + 1].query,
-            params: historys.value[index + 1].params,
-            hash: historys.value[index + 1].hash || ''
-          })
-        } else {
-          router.push({
-            name: historys.value[index - 1].name,
-            query: historys.value[index - 1].query,
-            params: historys.value[index - 1].params,
-            hash: historys.value[index - 1].hash || ''
-          })
-        }
-      }
-    }
-    historys.value.splice(index, 1)
+    const index = historys.value.findIndex(item => getFmtString(item) === tab)
+    if (index < 0) return
+    return closeTabs([historys.value[index]], historys.value[index + 1] || historys.value[index - 1])
   }
 
   watch(

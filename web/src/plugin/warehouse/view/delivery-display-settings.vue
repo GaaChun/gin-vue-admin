@@ -1,18 +1,34 @@
 <template>
   <div class="display-settings gva-table-box">
-    <header class="page-heading"><div><h2>单据展示设置</h2><p>仅对当前登录账号生效，保存后应用于送货单。</p></div><el-tag :type="dirty ? 'warning' : 'success'">{{ dirty ? '有未保存的修改' : '已保存' }}</el-tag></header>
+    <header class="page-heading"><div><h2>单据展示设置</h2><p>仅对当前登录账号生效，保存后应用于送货单与对账表。</p></div><el-tag :type="dirty ? 'warning' : 'success'">{{ dirty ? '有未保存的修改' : '已保存' }}</el-tag></header>
     <div class="settings-layout">
-      <aside class="document-tree"><div class="tree-title">单据管理</div><div class="tree-item">送货单</div></aside>
+      <aside class="document-tree"><div class="tree-title">单据管理</div><div class="tree-item">送货单与对账表</div></aside>
       <main class="settings-main" v-loading="saving">
         <el-alert v-if="saveError" :title="saveError" type="error" show-icon :closable="false" class="save-error" />
-        <el-tabs v-model="tab"><el-tab-pane label="列表展示" name="list" /><el-tab-pane label="详情展示" name="detail" /></el-tabs>
+        <el-tabs v-model="tab"><el-tab-pane label="列表展示" name="list" /><el-tab-pane label="详情展示" name="detail" /><el-tab-pane label="对账表查询" name="reconciliation" /></el-tabs>
         <template v-if="tab === 'list'">
           <section class="setting-section"><div class="section-heading"><h3>日期筛选默认值</h3><span>按上海时区计算，近 7 / 30 天含当天</span></div><el-radio-group v-model="draft.dateDefault"><el-radio v-for="preset in datePresets" :key="preset.key" :value="preset.key">{{ preset.label }}</el-radio></el-radio-group></section>
           <section class="setting-section"><div class="section-heading"><h3>筛选区域</h3><span>拖动调整顺序或移入其他分组，送货日期不可移除</span></div>
             <div v-for="group in filterGroups" :key="group.key" class="filter-row"><div class="group-label">{{ group.label }}</div><draggable v-model="filterLists[group.key]" :group="{ name: 'delivery-filters' }" item-key="key" class="filter-drop" :move="canMoveFilter" :disabled="saving" :animation="180" @change="syncFilters"><template #item="{ element }"><div class="filter-preview"><span class="drag-handle">⋮⋮</span><span>{{ element.label }}<b v-if="element.key === 'dates'" class="required-mark"> *</b></span><div v-if="group.key !== 'unused'" class="input-preview">{{ element.key === 'dates' ? '开始日期 — 结束日期' : '请选择或输入' }}</div><el-button v-if="group.key !== 'unused' && element.key !== 'dates'" link type="info" @click="removeFilter(element.key)">移除</el-button><el-button v-if="group.key === 'unused'" link type="primary" @click="addFilter(element.key)">添加</el-button></div></template><template #footer><span v-if="!filterLists[group.key].length" class="empty-tip">拖入字段</span></template></draggable></div>
           </section>
         </template>
-        <section class="setting-section"><div class="section-heading"><h3>{{ tab === 'list' ? '列表区域' : '明细区域' }}</h3><span>拖动列头排序；列宽 80–800 px{{ tab === 'detail' ? '；带 * 的字段不可移除' : '' }}</span></div>
+        <section v-if="tab === 'reconciliation'" class="setting-section">
+          <div class="section-heading"><h3>对账表查询条件</h3><span>拖动配置默认筛选、更多筛选及未使用字段；隐藏条件不参与新查询。</span></div>
+          <div v-for="group in filterGroups" :key="group.key" class="filter-row">
+            <div class="group-label">{{ group.label }}</div>
+            <draggable v-model="reportFilterLists[group.key]" :group="{ name: 'reconciliation-filters' }" item-key="key" class="filter-drop" :disabled="saving" :animation="180" @change="syncReportFilters">
+              <template #item="{ element }">
+                <div class="filter-preview"><span class="drag-handle">⋮⋮</span><span>{{ element.label }}</span>
+                  <div v-if="group.key !== 'unused'" class="input-preview">{{ ['deliveredRange', 'reviewedRange'].includes(element.key) ? '开始日期 — 结束日期' : '请选择或输入' }}</div>
+                  <el-button v-if="group.key !== 'unused'" link type="info" @click="removeReportFilter(element.key)">移除</el-button>
+                  <el-button v-else link type="primary" @click="addReportFilter(element.key)">添加</el-button>
+                </div>
+              </template>
+              <template #footer><span v-if="!reportFilterLists[group.key].length" class="empty-tip">拖入字段</span></template>
+            </draggable>
+          </div>
+        </section>
+        <section v-if="tab !== 'reconciliation'" class="setting-section"><div class="section-heading"><h3>{{ tab === 'list' ? '列表区域' : '明细区域' }}</h3><span>拖动列头排序；列宽 80–800 px{{ tab === 'detail' ? '；带 * 的字段不可移除' : '' }}</span></div>
           <el-checkbox v-if="tab === 'list'" v-model="draft.list.showActions" :disabled="saving">显示操作列</el-checkbox>
           <div v-if="tab === 'detail'" class="freeze-control"><span>冻结至第</span><el-input-number v-model="draft.detail.frozen" :min="0" :max="draft.detail.columns.length" :precision="0" size="small" /><span>列（0 表示不冻结）</span></div>
           <div class="column-scroll"><draggable :key="`${tab}-selected`" v-model="columnLists[tab]" :group="{ name: `delivery-${tab}-columns` }" item-key="key" class="column-preview" :move="canMoveColumn" :animation="180" :disabled="saving" @change="syncColumns"><template #item="{ element, index }"><div class="preview-column" :class="{ frozen: tab === 'detail' && index < draft.detail.frozen }" :style="{ width: `${draft[tab].widths[element.key] || element.width}px` }"><div class="column-heading"><span class="drag-handle">⋮⋮</span>{{ element.label }}<b v-if="element.required" class="required-mark"> *</b><el-button v-if="!element.required" link type="info" @click="removeColumn(element.key)">移除</el-button></div><div class="column-sample">{{ sampleValue(element.key) }}</div><div class="column-width"><span>列宽</span><el-input-number :model-value="draft[tab].widths[element.key] || element.width" :min="80" :max="800" :precision="0" size="small" controls-position="right" @update:model-value="setWidth(element.key, $event)" /></div></div></template><template #footer><div v-if="!columnLists[tab].length" class="empty-tip">拖入可用列以显示；也可保留空列表</div></template></draggable></div>
@@ -31,7 +47,7 @@ import draggable from 'vuedraggable'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { setSelfSetting } from '@/api/user'
 import { useUserStore } from '@/pinia/modules/user'
-import { DISPLAY_SETTING_KEY, FILTER_FIELDS, LIST_FIELDS, DETAIL_FIELDS, normalizeDisplaySettings } from '../delivery-display'
+import { DISPLAY_SETTING_KEY, FILTER_FIELDS, RECONCILIATION_FILTER_FIELDS, LIST_FIELDS, DETAIL_FIELDS, normalizeDisplaySettings } from '../delivery-display'
 
 const user = useUserStore()
 const accountKey = computed(() => String(user.userInfo.ID || user.userInfo.id || user.userInfo.uuid || ''))
@@ -42,6 +58,7 @@ const dirty = computed(() => JSON.stringify(draft.value) !== savedSignature.valu
 const saving = ref(false)
 const saveError = ref('')
 const filterLists = reactive({ basic: [], more: [], unused: [] })
+const reportFilterLists = reactive({ basic: [], more: [], unused: [] })
 const columnLists = reactive({ list: [], detail: [] })
 const spareLists = reactive({ list: [], detail: [] })
 let accountGeneration = 0
@@ -53,6 +70,8 @@ const filterGroups = [{ key: 'basic', label: '默认筛选' }, { key: 'more', la
 function rebuildLists() {
   for (const group of ['basic', 'more']) filterLists[group] = draft.value.filters[group].map((key) => FILTER_FIELDS.find((field) => field.key === key))
   filterLists.unused = FILTER_FIELDS.filter((field) => ![...draft.value.filters.basic, ...draft.value.filters.more].includes(field.key))
+  for (const group of ['basic', 'more']) reportFilterLists[group] = draft.value.reconciliation.filters[group].map(key => RECONCILIATION_FILTER_FIELDS.find(field => field.key === key))
+  reportFilterLists.unused = RECONCILIATION_FILTER_FIELDS.filter(field => ![...draft.value.reconciliation.filters.basic, ...draft.value.reconciliation.filters.more].includes(field.key))
   for (const [group, fields] of [['list', LIST_FIELDS], ['detail', DETAIL_FIELDS]]) {
     columnLists[group] = draft.value[group].columns.map((key) => fields.find((field) => field.key === key))
     spareLists[group] = fields.filter((field) => !draft.value[group].columns.includes(field.key))
@@ -85,6 +104,17 @@ function removeFilter(key) {
   syncFilters(); rebuildLists()
 }
 function addFilter(key) { filterLists.basic.push(FILTER_FIELDS.find((field) => field.key === key)); syncFilters(); rebuildLists() }
+function syncReportFilters() {
+  draft.value.reconciliation.filters = { basic: reportFilterLists.basic.map(field => field.key), more: reportFilterLists.more.map(field => field.key) }
+}
+function removeReportFilter(key) {
+  for (const group of ['basic', 'more']) reportFilterLists[group] = reportFilterLists[group].filter(field => field.key !== key)
+  syncReportFilters(); rebuildLists()
+}
+function addReportFilter(key) {
+  reportFilterLists.basic.push(RECONCILIATION_FILTER_FIELDS.find(field => field.key === key))
+  syncReportFilters(); rebuildLists()
+}
 function syncColumns() {
   for (const group of ['list', 'detail']) draft.value[group].columns = columnLists[group].map((field) => field.key)
   draft.value.detail.frozen = Math.min(draft.value.detail.frozen, draft.value.detail.columns.length)
@@ -100,7 +130,7 @@ function sampleValue(key) {
 }
 async function restore() {
   try {
-    await ElMessageBox.confirm('恢复送货单的默认展示设置？保存后生效。', '恢复默认', { type: 'warning', confirmButtonText: '恢复默认', cancelButtonText: '取消' })
+    await ElMessageBox.confirm('恢复送货单及对账表的默认展示设置？保存后生效。', '恢复默认', { type: 'warning', confirmButtonText: '恢复默认', cancelButtonText: '取消' })
     reset()
   } catch { /* User cancelled. */ }
 }

@@ -5,9 +5,16 @@ export const FILTER_FIELDS = [
   { key: 'brandId', label: '客户' }, { key: 'materialIds', label: '物料' }, { key: 'department', label: '部门' }, { key: 'status', label: '状态' },
   { key: 'detailRemark', label: '明细备注' }
 ]
+export const RECONCILIATION_FILTER_FIELDS = [
+  { key: 'schemeId', label: '选择方案' }, { key: 'deliveredRange', label: '送货日期' },
+  { key: 'reviewedRange', label: '审核日期' }, { key: 'brandId', label: '客户' },
+  { key: 'categoryId', label: '类别快照' }, { key: 'department', label: '部门' },
+  { key: 'number', label: '送货单号' }, { key: 'materialKeyword', label: '物料关键字' },
+  { key: 'statuses', label: '单据状态' }
+]
 export const LIST_FIELDS = [
   { key: 'number', label: '单号', width: 170 }, { key: 'deliveredAt', label: '送货日期', width: 120 },
-  { key: 'brandNameSnapshot', label: '客户', width: 180 }, { key: 'department', label: '部门', width: 120 },
+  { key: 'brandName', label: '客户', width: 180 }, { key: 'department', label: '部门', width: 120 },
   { key: 'status', label: '状态', width: 100 }, { key: 'totalAmount', label: '金额', width: 130 },
   { key: 'createdByNameSnapshot', label: '创建人', width: 120 }, { key: 'createdAt', label: '创建时间', width: 180 },
   { key: 'updatedByName', label: '修改人', width: 120 }, { key: 'updatedAt', label: '修改时间', width: 180 },
@@ -44,10 +51,17 @@ export function normalizeDisplaySettings(raw) {
   const detailColumns = cleanKeys(source.detail?.columns, DETAIL_FIELDS, keys(DETAIL_FIELDS))
   for (const field of DETAIL_FIELDS) if (field.required && !detailColumns.includes(field.key)) detailColumns.push(field.key)
   const frozen = source.detail?.frozen
+  const listColumns = Array.isArray(raw) ? raw : source.list?.columns
+  const migratedColumns = Array.isArray(listColumns) ? listColumns.map(key => key === 'brandNameSnapshot' ? 'brandName' : key) : undefined
+  const listWidths = { ...source.list?.widths }
+  if (listWidths.brandName === undefined && listWidths.brandNameSnapshot !== undefined) listWidths.brandName = listWidths.brandNameSnapshot
+  const reportBasic = cleanKeys(source.reconciliation?.filters?.basic, RECONCILIATION_FILTER_FIELDS, keys(RECONCILIATION_FILTER_FIELDS))
+  const reportMore = cleanKeys(source.reconciliation?.filters?.more, RECONCILIATION_FILTER_FIELDS, []).filter(key => !reportBasic.includes(key))
   return {
     dateDefault: presets.includes(source.dateDefault) ? source.dateDefault : 'system',
     filters: { basic, more },
-    list: { columns: cleanKeys(Array.isArray(raw) ? raw : source.list?.columns, LIST_FIELDS, keys(LIST_FIELDS)), widths: cleanWidths(source.list?.widths, LIST_FIELDS), showActions: source.list?.showActions !== false },
+    list: { columns: cleanKeys(migratedColumns, LIST_FIELDS, keys(LIST_FIELDS)), widths: cleanWidths(listWidths, LIST_FIELDS), showActions: source.list?.showActions !== false },
+    reconciliation: { filters: { basic: reportBasic, more: reportMore } },
     detail: { columns: detailColumns, widths: cleanWidths(source.detail?.widths, DETAIL_FIELDS), frozen: typeof frozen === 'number' && Number.isFinite(frozen) ? Math.min(detailColumns.length, Math.max(0, Math.floor(frozen))) : 0 }
   }
 }
