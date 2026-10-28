@@ -71,9 +71,9 @@ export default ({ mode }) => {
       target: 'es2015',
       rolldownOptions: {
         output: {
-          entryFileNames: 'assets/087AC4D233B64EB0[name].[hash].js',
-          chunkFileNames: 'assets/087AC4D233B64EB0[name].[hash].js',
-          assetFileNames: 'assets/087AC4D233B64EB0[name].[hash].[ext]'
+          entryFileNames: 'assets/DB11BD36B5E5E275[name].[hash].js',
+          chunkFileNames: 'assets/DB11BD36B5E5E275[name].[hash].js',
+          assetFileNames: 'assets/DB11BD36B5E5E275[name].[hash].[ext]'
         }
       }
     },
